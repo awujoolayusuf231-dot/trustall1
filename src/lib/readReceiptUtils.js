@@ -1,0 +1,61 @@
+import { supabase } from "./supabaseClient";
+
+export async function markConversationRead(conversationId) {
+  try {
+    await supabase.rpc("mark_conversation_read", {
+      p_conversation_id: conversationId,
+    });
+  } catch (err) {
+    console.error("Failed to mark conversation as read:", err);
+  }
+}
+
+export function getMessageReadStatus(message) {
+  if (!message.read_at && !message.delivered_at) {
+    return { status: "sending", icon: "⏱️" };
+  }
+  if (!message.read_at) {
+    return { status: "delivered", icon: "✓" };
+  }
+  return { status: "seen", icon: "✓✓" };
+}
+
+export function subscribeToMessageReadUpdates(conversationId, callback) {
+  const channel = supabase
+    .channel(`messages-read-${conversationId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        callback(payload.new);
+      }
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
+}
+
+export function subscribeToNewMessages(conversationId, callback) {
+  const channel = supabase
+    .channel(`messages-insert-${conversationId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        callback(payload.new);
+      }
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
+}

@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Preview Trustall app",
+			"type": "shell",
+			"command": "npm run preview -- --host 0.0.0.0 --port 4173",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

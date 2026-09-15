@@ -1,0 +1,180 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeSpeed;
+  }
+
+  .app-shell {
+    min-height: 100dvh;
+  }
+
+  .hero {
+    background-image: url('https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1800&q=85');
+    background-position: center 42%;
+    background-size: cover;
+  }
+
+  .listing-grid {
+    display: grid;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding-bottom: 0.5rem;
+  }
+
+  .listing-grid > * {
+    min-width: 0;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  .listing-card-image {
+    min-width: 0;
+    aspect-ratio: 1;
+  }
+
+  .listing-card-title {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.25;
+  }
+
+  .recently-viewed-card .listing-card-image {
+    max-height: 9rem;
+  }
+
+  .listing-card-stat {
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .listing-card-badge {
+    display: block;
+    max-width: 5.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 767px) {
+    .listing-card {
+      line-height: 1.25;
+    }
+
+    .listing-card .listing-card-image {
+      min-height: 0;
+    }
+
+    .listing-card .rounded-xl {
+      min-width: 0;
+    }
+
+    .listing-card-stat p:first-child {
+      font-size: 0.48rem;
+      letter-spacing: 0.08em;
+    }
+
+    .listing-card-stat p:last-child {
+      font-size: 0.8rem;
+    }
+
+    .listing-card-badge {
+      max-width: 4.1rem;
+      padding-left: 0.35rem;
+      padding-right: 0.35rem;
+      font-size: 0.48rem;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .listing-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 0.5rem;
+      row-gap: 1rem;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .listing-grid {
+      grid-auto-flow: row;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .hero-overlay {
+    background: linear-gradient(90deg, rgba(250, 248, 242, 0.98) 0%, rgba(250, 248, 242, 0.9) 46%, rgba(250, 248, 242, 0.3) 100%);
+  }
+
+  .animate-rise {
+    animation: rise-in 700ms ease-out both;
+  }
+
+  .animate-float {
+    animation: float-in 900ms 120ms ease-out both;
+  }
+
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes float-in {
+    from { opacity: 0; transform: translateY(24px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  img {
+    content-visibility: auto;
+  }
+
+  ::selection {
+    background-color: #E8A33D;
+    color: #1B1F3B;
+  }
+  :focus-visible {
+    outline: 2px solid #2F6E51;
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media (display-mode: standalone) and (max-width: 767px) {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  .app-shell {
+    min-height: 100dvh;
+  }
+
+  .app-shell > header {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .app-shell > main {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+}
