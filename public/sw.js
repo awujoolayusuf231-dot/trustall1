@@ -1,5 +1,5 @@
-const CACHE_NAME = 'trustall-v5';
-const ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg', '/icon-192.svg', '/icon-512.svg'];
+const CACHE_NAME = 'trustall-v6';
+const ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg', '/icon-192.svg', '/icon-512.svg', '/favicon.ico', '/robots.txt'];
 
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js');
@@ -67,13 +67,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const isStaticAssetRequest = event.request.url.startsWith(self.location.origin + '/assets/') || event.request.url.includes('.js') || event.request.url.includes('.css');
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
-      return fetch(event.request).catch(() => {
-        if (event.request.mode === 'navigate') return caches.match('/index.html');
-        return Response.error();
-      });
+      return fetch(event.request)
+        .then((response) => {
+          if (response && response.ok && isStaticAssetRequest) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => {
+          if (event.request.mode === 'navigate') return caches.match('/index.html');
+          return Response.error();
+        });
     })
   );
 });

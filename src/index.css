@@ -5,11 +5,15 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    overflow-x: hidden;
   }
 
   body {
     min-height: 100vh;
+    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     text-rendering: optimizeSpeed;
   }
 
@@ -135,6 +139,84 @@
 
   img {
     content-visibility: auto;
+    max-width: 100%;
+  }
+
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      min-width: 0;
+      max-width: 100%;
+      font-size: 16px;
+    }
+
+    .seller-profile-form input,
+    .seller-profile-form select,
+    .seller-profile-form textarea {
+      font-size: 16px;
+    }
+
+    .admin-page table {
+      display: block;
+      width: 100%;
+    }
+
+    .admin-page table thead {
+      display: none;
+    }
+
+    .admin-page table tbody,
+    .admin-page table tr,
+    .admin-page table td {
+      display: block;
+    }
+
+    .admin-page table tr {
+      margin: 0.75rem;
+      border: 1px solid var(--hairline, #e5e7eb);
+      border-radius: 1rem;
+      background: white;
+    }
+
+    .admin-page table td {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      max-width: none;
+      border: 0;
+      padding: 0.65rem 0.75rem;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+
+    .admin-page table td::before {
+      flex: 0 0 auto;
+      color: #6b7280;
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-align: left;
+    }
+
+    .admin-page table td:nth-child(1)::before { content: 'Item'; }
+    .admin-page table td:nth-child(2)::before { content: 'Seller'; }
+    .admin-page table td:nth-child(3)::before { content: 'Category'; }
+    .admin-page table td:nth-child(4)::before { content: 'Type'; }
+    .admin-page table td:nth-child(5)::before { content: 'Status'; }
+    .admin-page table td:nth-child(6)::before { content: 'Details'; }
+    .admin-page table td:nth-child(7)::before { content: 'Action'; }
+
+    .admin-page table td:first-child {
+      padding-top: 0.85rem;
+    }
+
+    .admin-page table td:last-child {
+      padding-bottom: 0.85rem;
+    }
+
+    .seller-profile-form input[type='file'] {
+      max-width: 100%;
+    }
   }
 
   ::selection {
@@ -176,5 +258,17 @@
 
   .app-shell > main {
     padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+}
+
+@supports (padding: max(0px)) {
+  .app-shell > header {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+
+  @media (max-width: 767px) {
+    .app-shell > main {
+      padding-bottom: max(6rem, calc(6rem + env(safe-area-inset-bottom)));
+    }
   }
 }

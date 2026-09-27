@@ -2,9 +2,11 @@ import { supabase } from "./supabaseClient";
 
 export async function markConversationRead(conversationId) {
   try {
-    await supabase.rpc("mark_conversation_read", {
+    const { error } = await supabase.rpc("mark_conversation_read", {
       p_conversation_id: conversationId,
     });
+    if (error) throw error;
+    window.dispatchEvent(new CustomEvent('trustall:conversation-read', { detail: { conversationId } }));
   } catch (err) {
     console.error("Failed to mark conversation as read:", err);
   }

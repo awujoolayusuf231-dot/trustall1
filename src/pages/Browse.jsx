@@ -60,12 +60,14 @@ function ListingCard({ listing, saved, onToggleSave, compact = false }) {
     <article className={`relative rounded-2xl border border-hairline bg-white ${compact ? 'recently-viewed-card min-w-[150px] p-2.5 sm:min-w-[165px]' : 'p-3 md:p-5'}`}>
       <Link to={`/listing/${listing.slug}`} className="block">
         <div className={`listing-card-image mb-3 aspect-square overflow-hidden rounded-xl bg-surfacealt ${compact ? '' : 'md:mb-4'}`}>
-          {listingImageUrl(firstListingImage(listing.images)) && <img src={listingImageUrl(firstListingImage(listing.images))} alt={listing.title} className="h-full w-full object-cover" />}
+          {listingImageUrl(firstListingImage(listing.images)) && <img src={listingImageUrl(firstListingImage(listing.images))} alt={listing.title} loading="lazy" className="h-full w-full object-cover" />}
         </div>
         <p className="truncate font-mono text-[10px] uppercase tracking-widest text-seal">{listing.product_type === 'digital_service' ? (listing.categoryName || 'Digital service') : listing.category}</p>
         <h3 className={`listing-card-title mt-1 truncate font-display text-sm text-ink ${compact ? '' : 'md:text-base'}`}>{listing.title}</h3>
         <p className={`mt-1 truncate font-mono font-semibold text-ink ${compact ? 'text-[11px]' : 'text-xs md:text-sm'}`}>{listing.product_type === 'digital_service' ? 'From ' : ''}₦{Number(displayPrice || 0).toLocaleString()}</p>
-        {!compact && listing.seller && <p className="mt-2 truncate text-xs text-muted">{listing.seller.business_name || 'Verified seller'}</p>}
+        {!compact && listing.seller && (
+          <p className="mt-2 truncate text-xs text-muted">{listing.seller.business_name || 'Verified seller'}</p>
+        )}
       </Link>
       <button type="button" onClick={() => onToggleSave(listing.id)} aria-label={saved ? 'Remove saved listing' : 'Save listing'} className="absolute right-4 top-4 rounded-full bg-white/90 p-2 text-seal shadow-sm hover:bg-seal hover:text-white">
         {saved ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
@@ -267,7 +269,10 @@ export default function Browse() {
   return (
     <section className="mx-auto max-w-6xl px-6 py-16">
       <p className="font-mono text-xs uppercase tracking-widest text-seal">Marketplace</p>
-      <h1 className="mt-3 font-display text-3xl font-bold text-ink">Browse listings</h1>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-3xl font-bold text-ink">Browse listings</h1>
+        <Link to="/sellers" className="rounded-full border border-hairline px-4 py-2 font-mono text-xs font-semibold text-seal transition hover:border-seal">Browse sellers</Link>
+      </div>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-4">
         <input
@@ -318,7 +323,7 @@ export default function Browse() {
               <Link to={`/listing/${l.slug}`} className="block">
               <div className="listing-card-image mb-3 aspect-square overflow-hidden rounded-xl bg-surfacealt">{listingImageUrl(firstListingImage(l.images)) && <img src={listingImageUrl(firstListingImage(l.images))} alt={l.title} className="h-full w-full object-cover" />}</div>
               <p className="truncate font-mono text-[10px] text-muted md:text-xs">{l.categoryName || l.category || 'Uncategorized'}</p>
-              <h3 className="listing-card-title mt-1 font-display text-sm text-ink md:text-base">{l.title}</h3>
+              <h3 className="listing-card-title mt-1 truncate font-display text-sm text-ink md:text-base">{l.title}</h3>
               <p className="mt-1 truncate font-mono text-xs font-semibold text-ink md:text-sm">{l.product_type === 'digital_service' ? 'From ' : ''}₦{Number(l.product_type === 'digital_service' ? (l.basicPackagePrice ?? l.price) : l.price || 0).toLocaleString()}</p>
               <div className="mt-3 flex items-center justify-between gap-1 rounded-xl bg-surfacealt px-2 py-2 md:gap-2 md:px-2.5">
                 <div className="listing-card-stat"><p className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted md:text-[10px] md:tracking-[0.2em]">Sales</p><p className="font-display text-sm font-bold text-ink md:text-lg">{sellerSales.count}</p></div>
@@ -334,7 +339,7 @@ export default function Browse() {
                 </div>
               </div>
               </Link>
-              <button type="button" onClick={() => toggleSave(l.id)} aria-label={savedIds.has(l.id) ? 'Remove saved listing' : 'Save listing'} className="absolute right-5 top-5 rounded-full bg-white/90 p-2 text-seal shadow-sm hover:bg-seal hover:text-white">
+              <button type="button" onClick={() => toggleSave(l.id)} aria-label={savedIds.has(l.id) ? 'Remove saved listing' : 'Save listing'} className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-seal shadow-sm hover:bg-seal hover:text-white">
                 {savedIds.has(l.id) ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
               </button>
             </article>

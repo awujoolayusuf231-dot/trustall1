@@ -225,15 +225,15 @@ export default function DisputePage() {
     <section className="mx-auto max-w-6xl px-6 py-10">
       {showGatekeeper && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4">
-          <div className="w-full max-w-2xl rounded-3xl border border-hairline bg-white p-6 shadow-2xl">
+          <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-3xl border border-hairline bg-white p-6 shadow-2xl">
             <p className="font-mono text-xs uppercase tracking-widest text-seal">Dispute reminder</p>
             <h2 className="mt-3 font-display text-2xl font-bold text-ink">To ensure a fast resolution, please follow these rules:</h2>
-            <ul className="mt-5 space-y-3 list-decimal pl-5 text-sm leading-7 text-muted">
+            <ul className="mt-5 min-h-0 flex-1 list-decimal space-y-3 overflow-y-auto pl-5 text-sm leading-7 text-muted">
               <li>Upload clear evidence. Unboxing videos are prioritized.</li>
               <li>Keep it professional. Insults will result in account suspension.</li>
               <li>The Trustall Admin's decision based on the evidence provided here is final.</li>
             </ul>
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-6 flex shrink-0 flex-wrap gap-3">
               <a href="/trust-safety" target="_blank" rel="noreferrer" className="rounded-full border border-hairline px-4 py-2 font-mono text-xs text-ink hover:border-seal hover:text-seal">Read full rules</a>
               <button type="button" onClick={() => setShowGatekeeper(false)} className="rounded-full bg-seal px-5 py-2 font-mono text-xs font-semibold text-surface hover:bg-seal-deep">I Understand</button>
             </div>

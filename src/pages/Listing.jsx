@@ -50,7 +50,7 @@ function ListingGallery({ gallery }) {
           className="h-full w-full cursor-zoom-in"
           aria-label="Open listing image full screen"
         >
-          <img src={listingImageUrl(gallery[activeIndex])} alt={`Listing image ${activeIndex + 1} of ${gallery.length}`} className="h-full w-full object-cover" />
+          <img src={listingImageUrl(gallery[activeIndex])} alt={`Listing image ${activeIndex + 1} of ${gallery.length}`} loading="lazy" className="h-full w-full object-cover" />
         </button>
         {gallery.length > 1 && (
           <>
@@ -71,7 +71,7 @@ function ListingGallery({ gallery }) {
               aria-label={`Show listing image ${index + 1}`}
               className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border-2 ${index === activeIndex ? 'border-seal' : 'border-transparent'}`}
             >
-              <img src={listingImageUrl(src)} alt="" className="h-full w-full object-cover" />
+              <img src={listingImageUrl(src)} alt="" loading="lazy" className="h-full w-full object-cover" />
             </button>
           ))}
         </div>
@@ -81,7 +81,7 @@ function ListingGallery({ gallery }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" aria-label="Listing image viewer">
           <button type="button" onClick={() => setLightboxOpen(false)} aria-label="Close image viewer" className="absolute right-4 top-4 rounded-full bg-white/10 px-4 py-2 text-2xl text-white hover:bg-white/20">×</button>
           {gallery.length > 1 && <button type="button" onClick={previous} aria-label="Previous listing image" className="absolute left-4 rounded-full bg-white/10 px-4 py-2 text-3xl text-white hover:bg-white/20">‹</button>}
-          <img src={listingImageUrl(gallery[activeIndex])} alt={`Listing image ${activeIndex + 1} of ${gallery.length}`} className="max-h-[90vh] max-w-[90vw] object-contain" />
+          <img src={listingImageUrl(gallery[activeIndex])} alt={`Listing image ${activeIndex + 1} of ${gallery.length}`} loading="lazy" className="max-h-[90vh] max-w-[90vw] object-contain" />
           {gallery.length > 1 && <button type="button" onClick={next} aria-label="Next listing image" className="absolute right-4 rounded-full bg-white/10 px-4 py-2 text-3xl text-white hover:bg-white/20">›</button>}
           <span className="absolute bottom-5 rounded-full bg-white/10 px-3 py-1 font-mono text-xs text-white">{activeIndex + 1}/{gallery.length}</span>
         </div>
@@ -184,32 +184,18 @@ export default function Listing() {
       navigate('/auth', { state: { redirectTo: `/listing/${slug}` } })
       return
     }
-    if (session.user.id === listing.seller.id) return
+
+    const sellerId = listing?.seller_id || listing?.seller?.id
+    if (!sellerId) {
+      console.error('Cannot start chat because the listing seller id is missing.')
+      return
+    }
+    if (session.user.id === sellerId) return
 
     setStarting(true)
     try {
-      const { data: existing } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('listing_id', listing.id)
-        .eq('buyer_id', session.user.id)
-        .eq('seller_id', listing.seller.id)
-        .maybeSingle()
-
-      let conversationId = existing?.id
-      if (!conversationId) {
-        const { data: created, error } = await supabase
-          .from('conversations')
-          .insert({ listing_id: listing.id, buyer_id: session.user.id, seller_id: listing.seller.id })
-          .select('id')
-          .single()
-        if (error) {
-          console.error('Error creating conversation:', error)
-          setStarting(false)
-          return
-        }
-        conversationId = created.id
-      }
+      const conversationId = await getOrCreateConversation(listing.id, session.user.id, sellerId)
+      if (!conversationId) return
       if (withPackageRequest && selectedPackageId) {
         const { error: messageError } = await supabase.from('messages').insert({
           conversation_id: conversationId,
@@ -218,9 +204,10 @@ export default function Listing() {
         })
         if (messageError) console.warn('Package request message could not be saved:', messageError)
       }
-      navigate(`/messages/${conversationId}`)
+      navigate(`/messages/${conversationId}?listing=${encodeURIComponent(listing.id)}`)
     } catch (err) {
       console.error('Error starting chat:', err)
+    } finally {
       setStarting(false)
     }
   }
@@ -230,32 +217,22 @@ export default function Listing() {
       navigate('/auth', { state: { redirectTo: `/listing/${slug}` } })
       return
     }
-    if (!selectedPackageId || session.user.id === listing.seller.id) return
+
+    const sellerId = listing?.seller_id || listing?.seller?.id
+    if (!sellerId) {
+      console.error('Cannot start service request because the listing seller id is missing.')
+      return
+    }
+    if (!selectedPackageId || session.user.id === sellerId) return
     setCreatingOffer(true)
     setOfferMessage('')
     try {
-      const { data: existing } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('listing_id', listing.id)
-        .eq('buyer_id', session.user.id)
-        .eq('seller_id', listing.seller.id)
-        .maybeSingle()
-
-      let conversationId = existing?.id
-      if (!conversationId) {
-        const { data: created, error: conversationError } = await supabase
-          .from('conversations')
-          .insert({ listing_id: listing.id, buyer_id: session.user.id, seller_id: listing.seller.id })
-          .select('id')
-          .single()
-        if (conversationError) throw conversationError
-        conversationId = created.id
-      }
+      const conversationId = await getOrCreateConversation(listing.id, session.user.id, sellerId)
+      if (!conversationId) return
 
       const { error: offerError } = await supabase.from('offers').insert({
         conversation_id: conversationId,
-        seller_id: listing.seller.id,
+        seller_id: sellerId,
         item_title: listing.title,
         item_description: listing.description || null,
         package_id: selectedPackageId,
@@ -279,7 +256,7 @@ export default function Listing() {
         })
         if (messageError) console.warn('Package request message was not saved:', messageError)
       }
-      navigate(`/messages/${conversationId}`)
+      navigate(`/messages/${conversationId}?listing=${encodeURIComponent(listing.id)}`)
     } catch (offerError) {
       console.error('Service offer creation failed:', offerError)
       setOfferMessage(offerError.message || 'Could not start this service offer.')
@@ -428,6 +405,41 @@ export default function Listing() {
       </div>
     </section>
   )
+}
+
+async function getOrCreateConversation(listingId, buyerId, sellerId) {
+  const { data: existing, error: lookupError } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('buyer_id', buyerId)
+    .eq('seller_id', sellerId)
+    .maybeSingle()
+
+  if (lookupError) throw lookupError
+  if (existing?.id) return existing.id
+
+  const { data: created, error: insertError } = await supabase
+    .from('conversations')
+    .insert({ listing_id: listingId, buyer_id: buyerId, seller_id: sellerId })
+    .select('id')
+    .single()
+
+  if (!insertError) return created.id
+
+  // Another tab or request may have created the unique buyer/seller thread first.
+  if (insertError.code === '23505') {
+    const { data: concurrentConversation, error: retryError } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('buyer_id', buyerId)
+      .eq('seller_id', sellerId)
+      .maybeSingle()
+
+    if (retryError) throw retryError
+    if (concurrentConversation?.id) return concurrentConversation.id
+  }
+
+  throw insertError
 }
 
 function buildPackageRequestMessage(packages, extras, selectedPackageId, selectedExtraIds) {

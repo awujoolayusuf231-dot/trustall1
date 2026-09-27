@@ -1,44 +1,70 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getUnreadNotificationCount,
   fetchNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  markConversationNotificationsRead,
   subscribeToNotifications,
   formatRelativeTime,
   getNotificationRoute,
   getNotificationIcon,
+  getNotificationDisplayTitle,
 } from "../lib/notificationUtils";
+import { supabase } from "../lib/supabaseClient.js";
 import { sendBrowserNotification } from "../lib/notifications.js";
 
 export function NotificationBell({ userId }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [senderNames, setSenderNames] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const ref = useRef(null);
+  const senderNamesRef = useRef({});
   const navigate = useNavigate();
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [count, list] = await Promise.all([
+        getUnreadNotificationCount(userId),
+        fetchNotifications(userId),
+      ]);
+      setUnreadCount(count);
+      setNotifications(list);
+      console.log("Notifications loaded:", list.length, "unread:", count);
+    } catch (err) {
+      console.error("Failed to load notifications:", err);
+      setError("Failed to load notifications");
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    senderNamesRef.current = senderNames;
+  }, [senderNames]);
 
   useEffect(() => {
     if (!userId) return;
 
     loadNotifications();
-    
+
     const unsubscribe = subscribeToNotifications(userId, (newNotification) => {
       console.log("New notification received:", newNotification);
       setNotifications((prev) => {
-        // Avoid duplicates
         if (prev.some((n) => n.id === newNotification.id)) return prev;
         return [newNotification, ...prev];
       });
       setUnreadCount((prev) => prev + 1);
-      
-      // Send browser notification when a new notification arrives
+
       if (Notification.permission === 'granted') {
         sendBrowserNotification(
-          newNotification.title,
+          getNotificationDisplayTitle(newNotification, senderNamesRef.current[newNotification.sender_id]),
           newNotification.message || "You have a new notification"
         );
       }
@@ -47,7 +73,43 @@ export function NotificationBell({ userId }) {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [userId]);
+  }, [userId, loadNotifications]);
+
+  useEffect(() => {
+    if (!notifications.length) return;
+
+    const senderIds = [...new Set(
+      notifications
+        .filter((notification) => notification.sender_id)
+        .map((notification) => notification.sender_id)
+    )];
+
+    if (senderIds.length === 0) return;
+
+    let active = true;
+
+    async function loadSenderNames() {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, business_name, handle')
+        .in('id', senderIds);
+
+      if (!active || !data) return;
+
+      const nextNames = data.reduce((accumulator, profile) => {
+        accumulator[profile.id] = profile.business_name || profile.full_name || profile.handle || 'Someone';
+        return accumulator;
+      }, {});
+
+      setSenderNames((previous) => ({ ...previous, ...nextNames }));
+    }
+
+    loadSenderNames();
+
+    return () => {
+      active = false;
+    };
+  }, [notifications]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -67,30 +129,14 @@ export function NotificationBell({ userId }) {
     }
   }, [unreadCount]);
 
-  async function loadNotifications() {
-    try {
-      setLoading(true);
-      setError(null);
-      const [count, list] = await Promise.all([
-        getUnreadNotificationCount(userId),
-        fetchNotifications(userId),
-      ]);
-      setUnreadCount(count);
-      setNotifications(list);
-      console.log("Notifications loaded:", list.length, "unread:", count);
-    } catch (err) {
-      console.error("Failed to load notifications:", err);
-      setError("Failed to load notifications");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const [selectedNotification, setSelectedNotification] = useState(null);
 
   async function handleNotificationClick(notification) {
     try {
       await markNotificationRead(notification.id);
+      if (notification.related_conversation_id) {
+        await markConversationNotificationsRead(userId, notification.related_conversation_id);
+      }
       setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
       setUnreadCount((prev) => Math.max(0, prev - 1));
       setSelectedNotification(notification);
@@ -129,7 +175,7 @@ export function NotificationBell({ userId }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-full hover:bg-surfacealt transition"
+        className="relative flex h-11 w-11 items-center justify-center rounded-full hover:bg-surfacealt transition"
         aria-label="Notifications"
       >
         <svg
@@ -155,7 +201,7 @@ export function NotificationBell({ userId }) {
       </button>
 
       {open && !selectedNotification && (
-        <div className="absolute right-0 mt-2 w-80 rounded-xl border border-hairline bg-white shadow-lg z-50">
+        <div className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] max-w-80 rounded-xl border border-hairline bg-white shadow-lg z-50">
           <div className="border-b border-hairline px-4 py-3 flex items-center justify-between">
             <h3 className="font-semibold text-ink">Notifications</h3>
             {unreadCount > 0 && (
@@ -174,32 +220,36 @@ export function NotificationBell({ userId }) {
             ) : notifications.length === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-muted">No notifications yet</div>
             ) : (
-              notifications.map((notification) => (
-                <button
-                  key={notification.id}
-                  onClick={() => handleNotificationClick(notification)}
-                  className={`w-full border-b border-hairline px-4 py-3 text-left transition hover:bg-surfacealt ${
-                    !notification.read_at ? "bg-blue-50" : ""
-                  }`}
-                >
-                  <div className="flex gap-3">
-                    <span className="text-xl flex-shrink-0">
-                      {getNotificationIcon(notification.type)}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-ink line-clamp-1">
-                        {notification.title}
-                      </p>
-                      <p className="text-xs text-muted line-clamp-2 mt-0.5">
-                        {notification.message || notification.body || "You have a new update."}
-                      </p>
-                      <p className="text-xs text-muted mt-1">
-                        {formatRelativeTime(notification.created_at)}
-                      </p>
+              notifications.map((notification) => {
+                const displayTitle = getNotificationDisplayTitle(notification, senderNames[notification.sender_id]);
+
+                return (
+                  <button
+                    key={notification.id}
+                    onClick={() => handleNotificationClick(notification)}
+                    className={`w-full border-b border-hairline px-4 py-3 text-left transition hover:bg-surfacealt ${
+                      !notification.read_at ? "bg-blue-50" : ""
+                    }`}
+                  >
+                    <div className="flex gap-3">
+                      <span className="text-xl flex-shrink-0">
+                        {getNotificationIcon(notification.type)}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-ink line-clamp-1">
+                          {displayTitle}
+                        </p>
+                        <p className="text-xs text-muted line-clamp-2 mt-0.5">
+                          {notification.message || notification.body || "You have a new update."}
+                        </p>
+                        <p className="text-xs text-muted mt-1">
+                          {formatRelativeTime(notification.created_at)}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
@@ -210,12 +260,14 @@ export function NotificationBell({ userId }) {
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               <span className="text-2xl">{getNotificationIcon(selectedNotification.type)}</span>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Notification</p>
-                <h3 className="mt-1 font-display text-xl font-bold text-ink">{selectedNotification.title}</h3>
+                <h3 className="mt-1 font-display text-xl font-bold text-ink">
+                  {getNotificationDisplayTitle(selectedNotification, senderNames[selectedNotification.sender_id])}
+                </h3>
               </div>
             </div>
-            <button onClick={closeNotificationDetail} className="font-mono text-xs text-muted hover:text-ink">Close</button>
+            <button onClick={closeNotificationDetail} className="min-h-11 shrink-0 rounded-lg px-2 font-mono text-xs text-muted hover:bg-surfacealt hover:text-ink">Close</button>
           </div>
 
           <div className="mt-4 rounded-xl border border-hairline bg-surfacealt p-3">

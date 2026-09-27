@@ -68,7 +68,7 @@ function AccountMenu({ profile }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-inksoft font-display text-xs font-bold text-surface"
+        className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-inksoft font-display text-xs font-bold text-surface"
       >
         {getAvatarUrl(profile) ? (
           <img src={getAvatarUrl(profile)} alt="Profile" className="h-full w-full object-cover" />
@@ -105,6 +105,7 @@ const NAV_LINKS = [
   { to: '/#how-it-works', label: 'How it works', anchor: true },
   { to: '/sell', label: 'For businesses' },
   { to: '/browse', label: 'Verified businesses' },
+  { to: '/sellers', label: 'All sellers' },
   { to: '/blog', label: 'Blog' },
   { to: '/about', label: 'About' },
 ]
@@ -117,6 +118,7 @@ export function MobileBottomNav() {
   useEffect(() => {
     if (!session?.user?.id) return
     let active = true
+    const activeConversationId = location.pathname.match(/^\/messages\/([^/]+)/)?.[1] || null
 
     async function loadBadge() {
       const { data: conversations = [] } = await supabase.from('conversations').select('id, buyer_id, seller_id, buyer_last_read_at, seller_last_read_at').or(`buyer_id.eq.${session.user.id},seller_id.eq.${session.user.id}`)
@@ -125,13 +127,14 @@ export function MobileBottomNav() {
         if (active) setMessageBadge(0)
         return
       }
-      const { data: messages = [] } = await supabase.from('messages').select('created_at, sender_id').in('conversation_id', conversationIds).neq('sender_id', session.user.id)
+      const { data: messages = [] } = await supabase.from('messages').select('conversation_id, created_at, sender_id').in('conversation_id', conversationIds).neq('sender_id', session.user.id)
       const readAtByConversation = (conversations || []).reduce((map, conversation) => {
         const isBuyer = conversation.buyer_id === session.user.id
         map[conversation.id] = isBuyer ? conversation.buyer_last_read_at : conversation.seller_last_read_at
         return map
       }, {})
       const unread = messages.filter((message) => {
+        if (message.conversation_id === activeConversationId) return false
         const lastReadAt = readAtByConversation[message.conversation_id]
         return !lastReadAt || new Date(message.created_at).getTime() > new Date(lastReadAt).getTime()
       }).length
@@ -139,12 +142,19 @@ export function MobileBottomNav() {
     }
 
     loadBadge()
-    const channel = supabase.channel(`mobile-nav-badge-${session.user.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, loadBadge).subscribe()
+    const handleConversationRead = () => loadBadge()
+    window.addEventListener('trustall:conversation-read', handleConversationRead)
+    const channel = supabase
+      .channel(`mobile-nav-badge-${session.user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, loadBadge)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, loadBadge)
+      .subscribe()
     return () => {
       active = false
+      window.removeEventListener('trustall:conversation-read', handleConversationRead)
       supabase.removeChannel(channel)
     }
-  }, [session?.user?.id])
+  }, [session?.user?.id, location.pathname])
 
   const mobileLinks = [
     { to: '/', label: 'Home', icon: 'home' },
@@ -179,8 +189,10 @@ export function MobileBottomNav() {
 
 export default function Navbar() {
   const { session, profile } = useProfile()
+  const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
+  const hideHeaderOnMobileMessageRoute = location.pathname.startsWith('/messages') && typeof window !== 'undefined' && window.innerWidth < 768
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false)
@@ -196,7 +208,7 @@ export default function Navbar() {
   }, [])
 
   return (
-    <header className="sticky top-0 z-50 border-b border-hairline bg-surface/90 backdrop-blur">
+    <header className={`sticky top-0 z-50 border-b border-hairline bg-surface/90 backdrop-blur ${hideHeaderOnMobileMessageRoute ? 'hidden md:block' : ''}`}>
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6 md:py-4">
         <Link to="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
           <SealMark size={24} />

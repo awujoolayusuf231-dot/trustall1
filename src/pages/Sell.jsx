@@ -90,7 +90,7 @@ export default function Sell() {
   if (loading || !profile) return <div className="px-6 py-24 text-center text-muted">Loading…</div>
 
   return (
-    <section className="mx-auto max-w-3xl px-6 py-16">
+    <section className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 sm:py-16">
       <p className="font-mono text-xs uppercase tracking-widest text-seal">Seller dashboard</p>
       <h1 className="mt-3 font-display text-3xl font-bold text-ink">
         {profile.business_name || profile.full_name || 'Your seller space'}
@@ -300,24 +300,24 @@ function ProfileSetup({ profile, setProfile, session }) {
   }
 
   return (
-    <div className="mt-10 rounded-2xl border border-hairline bg-white p-6">
-      <div className="flex items-center justify-between">
+    <div className="mt-10 rounded-2xl border border-hairline bg-white p-4 sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-display text-lg text-ink">1. Your seller profile</h2>
         {complete && <span className="font-mono text-xs text-seal">✓ complete</span>}
       </div>
-      <form onSubmit={save} className="mt-5 grid gap-4 sm:grid-cols-2">
+      <form onSubmit={save} className="seller-profile-form mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
         <input
           required placeholder="Business or shop name" value={businessName}
           onChange={(e) => setBusinessName(e.target.value)}
           className="rounded-xl border border-hairline bg-surfacealt px-4 py-3 text-sm text-ink placeholder:text-muted focus:border-seal outline-none sm:col-span-2"
         />
         <div className="sm:col-span-2">
-          <div className="flex items-center rounded-xl border border-hairline bg-surfacealt px-4 py-3 focus-within:border-seal">
-            <span className="font-mono text-sm text-muted">{publicSiteHost}/</span>
+          <div className="flex min-w-0 items-center rounded-xl border border-hairline bg-surfacealt px-3 py-3 focus-within:border-seal sm:px-4">
+            <span className="max-w-[46%] shrink-0 break-all font-mono text-xs text-muted sm:text-sm">{publicSiteHost}/</span>
             <input
               required placeholder="your-handle" value={handle}
               onChange={(e) => setHandle(e.target.value)}
-              className="flex-1 bg-transparent font-mono text-sm text-ink placeholder:text-muted outline-none"
+              className="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink placeholder:text-muted outline-none"
             />
           </div>
           <p className="mt-1 text-xs text-muted">This is your shareable profile link.</p>
@@ -354,7 +354,7 @@ function ProfileSetup({ profile, setProfile, session }) {
         {error && <p className="text-sm text-marigold-deep sm:col-span-2">{error}</p>}
         <button
           type="submit" disabled={saving}
-          className="rounded-full bg-ink px-6 py-2.5 font-body text-sm font-medium text-surface hover:bg-inksoft disabled:opacity-50 sm:col-span-2 sm:w-fit"
+          className="w-full rounded-full bg-ink px-6 py-3 font-body text-sm font-medium text-surface hover:bg-inksoft disabled:opacity-50 sm:col-span-2 sm:w-fit"
         >
           {saving ? 'Saving…' : 'Save profile'}
         </button>
@@ -650,6 +650,9 @@ function ListingsBlock({ profile, session }) {
       product_type: productType,
       digital_file_path: digitalFilePath,
       services_included: normalizedServices,
+      status: 'pending_review',
+      is_active: false,
+      moderation_reason: null,
     }
 
     let newListingId = editingId

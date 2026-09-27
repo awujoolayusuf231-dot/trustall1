@@ -1,5 +1,35 @@
 import { supabase } from "./supabaseClient";
 
+export function getNotificationDisplayTitle(notification, senderName) {
+  if (!notification) return 'Notification';
+
+  if (notification.type === 'new_message') {
+    const resolvedSenderName = String(senderName || notification.sender_name || 'someone').trim();
+    return resolvedSenderName ? `New message from ${resolvedSenderName}` : 'New message';
+  }
+
+  return notification.title || 'New update';
+}
+
+export function getNotificationBadgeSummary(notifications = []) {
+  return (notifications || []).reduce((summary, notification) => {
+    if (!notification) return summary;
+
+    if (notification.type === 'new_message') {
+      summary.message += 1;
+    } else if (
+      ['payment_pending', 'payment_released', 'delivered', 'order_confirmed', 'delivery_confirmed', 'order_status_updated', 'payout_initiated', 'payout_completed'].includes(notification.type)
+      || notification.type.startsWith('order')
+    ) {
+      summary.order += 1;
+    } else {
+      summary.other += 1;
+    }
+
+    return summary;
+  }, { message: 0, order: 0, other: 0 });
+}
+
 /**
  * Get unread notification count for a user
  */
@@ -70,6 +100,23 @@ export async function markAllNotificationsRead(userId) {
     if (error) throw error;
   } catch (err) {
     console.error("Failed to mark all notifications as read:", err);
+  }
+}
+
+export async function markConversationNotificationsRead(userId, conversationId) {
+  if (!userId || !conversationId) return;
+
+  try {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("recipient_id", userId)
+      .eq("related_conversation_id", conversationId)
+      .is("read_at", null);
+
+    if (error) throw error;
+  } catch (err) {
+    console.error("Failed to mark conversation notifications as read:", err);
   }
 }
 

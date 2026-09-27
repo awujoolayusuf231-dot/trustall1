@@ -210,7 +210,7 @@ function AdminHome({ onLogout, email }) {
   const [tab, setTab] = useState('overview')
 
   return (
-    <div>
+    <div className="admin-page">
       <div className="mx-auto max-w-4xl px-6 pt-16">
         <div className="flex items-center justify-between">
           <div>
@@ -222,36 +222,36 @@ function AdminHome({ onLogout, email }) {
         <div className="mt-6 flex flex-wrap gap-2">
           <button
             onClick={() => setTab('overview')}
-            className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'overview' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
+            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'overview' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
           >
             Overview
           </button>
           <button
             onClick={() => setTab('verification')}
-            className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'verification' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
+            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'verification' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
           >
             Seller verification
           </button>
           <button
             onClick={() => setTab('reports')}
-            className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'reports' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
+            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'reports' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
           >
             Reports & moderation
           </button>
-          <button onClick={() => setTab('listings')} className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'listings' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}>Listings</button>
-          <button onClick={() => setTab('broadcast')} className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'broadcast' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Broadcast</button>
-          <button onClick={() => setTab('users')} className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'users' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}>Mediators</button>
-          <button onClick={() => setTab('payouts')} className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'payouts' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Pending payouts</button>
-          <button onClick={() => setTab('earnings')} className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'earnings' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Trustall Earnings</button>
+          <button onClick={() => setTab('listings')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'listings' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}>Listings</button>
+          <button onClick={() => setTab('broadcast')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'broadcast' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Broadcast</button>
+          <button onClick={() => setTab('users')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'users' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}>Mediators</button>
+          <button onClick={() => setTab('payouts')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'payouts' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Pending payouts</button>
+          <button onClick={() => setTab('earnings')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'earnings' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Trustall Earnings</button>
           <button
             onClick={() => setTab('blog')}
-            className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'blog' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}
+            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'blog' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}
           >
             Blog
           </button>
           <button
             onClick={() => setTab('catalog')}
-            className={`rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'catalog' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}
+            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'catalog' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}
           >
             Service catalog
           </button>
@@ -418,6 +418,22 @@ function ListingModeration() {
     const { error: updateError } = await supabase.from('listings').update(changes).eq('id', listing.id)
     if (updateError) { setError(updateError.message); return }
     setListings((current) => current.map((item) => item.id === listing.id ? { ...item, ...changes } : item))
+  }
+  function renderModerationActions(listing) {
+    const isPending = listing.status === 'pending_review'
+    return (
+      <div className="flex flex-wrap gap-2">
+        {isPending && (
+          <button type="button" onClick={() => reviewListing(listing, true)} className="whitespace-nowrap rounded-full bg-seal px-3 py-1.5 font-mono text-[10px] font-bold text-surface">Approve</button>
+        )}
+        {isPending && (
+          <button type="button" onClick={() => reviewListing(listing, false)} className="whitespace-nowrap rounded-full border border-marigold/40 px-3 py-1.5 font-mono text-[10px] font-bold text-marigold-deep">Reject</button>
+        )}
+        {!isPending && (
+          <button type="button" onClick={() => toggleListing(listing)} className="whitespace-nowrap rounded-full border border-hairline px-3 py-1.5 font-mono text-[10px] text-ink">{listing.is_active ? 'Remove' : 'Restore'}</button>
+        )}
+      </div>
+    )
   }
   async function toggleListing(listing) {
     const removalReason = listing.is_active ? window.prompt('Required reason for removing this listing:') : null

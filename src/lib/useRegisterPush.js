@@ -4,6 +4,27 @@ import { supabase } from "./supabaseClient";
 
 let tokenRefreshInterval = null;
 
+async function getAppServiceWorkerRegistration() {
+  if (!('serviceWorker' in navigator)) return null
+
+  let registration = await navigator.serviceWorker.getRegistration('/')
+  if (!registration) {
+    registration = await navigator.serviceWorker.register('/sw.js?v=5', { scope: '/' })
+  }
+
+  if (!registration.active) {
+    const readyRegistration = await navigator.serviceWorker.ready
+    if (readyRegistration.scope === registration.scope) registration = readyRegistration
+  }
+
+  if (!registration.active?.scriptURL.includes('/sw.js')) {
+    console.warn('Trustall app service worker is not active; push registration skipped')
+    return null
+  }
+
+  return registration
+}
+
 /**
  * Register push token and set up token refresh
  * Token should be refreshed every 24 hours as per Firebase recommendations
@@ -37,12 +58,8 @@ export async function registerPushToken(userId) {
       return;
     }
 
-    // Register service worker with proper scoping and bypass options
-    const registration = await navigator.serviceWorker.ready
-    if (!registration.active?.scriptURL.includes('/sw.js')) {
-      console.warn('Trustall app service worker is not active; push registration skipped')
-      return
-    }
+    const registration = await getAppServiceWorkerRegistration()
+    if (!registration) return
 
     // Get and store token
     await retrieveAndStoreToken(userId, registration);

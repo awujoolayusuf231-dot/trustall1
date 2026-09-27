@@ -1,28 +1,63 @@
 ﻿import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient.js'
 import { useProfile } from '../lib/useProfile.js'
 import { markConversationRead, subscribeToMessageReadUpdates } from '../lib/readReceiptUtils.js'
 import { SealMark } from '../components/Navbar.jsx'
 import { isOnline, formatLastSeen, subscribeToUserPresence } from '../lib/presenceUtils.js'
 import { ensureNotificationPermission, sendBrowserNotification } from '../lib/notifications.js'
+import { markConversationNotificationsRead } from '../lib/notificationUtils.js'
+import { getSupportEmail } from '../lib/authRedirect.js'
 
 export default function Messages() {
   const { conversationId } = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { session, profile, loading } = useProfile()
-  const [isMobileView, setIsMobileView] = useState(false)
+  const [isMobileView, setIsMobileView] = useState(() => (
+    typeof window !== 'undefined' && window.innerWidth < 768
+  ))
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
 
   // Detect mobile view on mount and on window resize
   useEffect(() => {
     const checkMobileView = () => {
       setIsMobileView(window.innerWidth < 768) // md breakpoint
     }
-    
+
     checkMobileView()
     window.addEventListener('resize', checkMobileView)
     return () => window.removeEventListener('resize', checkMobileView)
   }, [])
+
+  useEffect(() => {
+    if (!isMobileView || !conversationId) {
+      setKeyboardOffset(0)
+      return
+    }
+
+    const updateKeyboardOffset = () => {
+      const viewport = window.visualViewport
+      if (!viewport) {
+        setKeyboardOffset(0)
+        return
+      }
+
+      const nextOffset = Math.max(0, window.innerHeight - viewport.height)
+      setKeyboardOffset(nextOffset)
+    }
+
+    updateKeyboardOffset()
+    window.addEventListener('resize', updateKeyboardOffset)
+    window.visualViewport?.addEventListener('resize', updateKeyboardOffset)
+    window.visualViewport?.addEventListener('scroll', updateKeyboardOffset)
+
+    return () => {
+      window.removeEventListener('resize', updateKeyboardOffset)
+      window.visualViewport?.removeEventListener('resize', updateKeyboardOffset)
+      window.visualViewport?.removeEventListener('scroll', updateKeyboardOffset)
+    }
+  }, [isMobileView, conversationId])
 
   useEffect(() => {
     if (!loading && !session) navigate('/auth', { state: { redirectTo: '/messages' } })
@@ -71,7 +106,9 @@ export default function Messages() {
             conversationId={conversationId} 
             userId={session.user.id} 
             userEmail={session.user.email}
+            listingId={searchParams.get('listing')}
             isMobileFullscreen={showChatFullscreen}
+            keyboardOffset={keyboardOffset}
             onBackClick={() => navigate('/messages')}
           />
         ) : (
@@ -200,9 +237,10 @@ function ConversationList({ userId, activeId }) {
   )
 }
 
-function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackClick }) {
+function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscreen, keyboardOffset, onBackClick }) {
   const [items, setItems] = useState([])
   const [conversation, setConversation] = useState(null)
+  const [activeListing, setActiveListing] = useState(null)
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [offerMode, setOfferMode] = useState(false)
@@ -212,8 +250,42 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
   const [attachmentsByMessageId, setAttachmentsByMessageId] = useState({})
   const [selectedFiles, setSelectedFiles] = useState([])
   const [uploadingAttachments, setUploadingAttachments] = useState(false)
+  const [pendingMessages, setPendingMessages] = useState([])
+  const listingContextInitialized = useRef(false)
   const messagesRef = useRef(null)
   const bottomRef = useRef(null)
+
+  async function retryPendingMessages() {
+    if (!navigator.onLine || pendingMessages.length === 0) return
+
+    const retryQueue = [...pendingMessages]
+    for (const item of retryQueue) {
+      if (!item.pending) continue
+      try {
+        const { data: message, error: messageError } = await supabase
+          .from('messages')
+          .insert({ conversation_id: conversationId, sender_id: userId, body: (item.body || '').trim() || '' })
+          .select()
+          .single()
+
+        if (messageError) throw messageError
+
+        setItems((prev) => prev.map((entry) => entry.id === item.tempId ? { ...message, kind: 'message' } : entry))
+        setPendingMessages((prev) => prev.filter((entry) => entry.tempId !== item.tempId))
+      } catch (error) {
+        console.error('Failed to retry pending message:', error)
+      }
+    }
+  }
+
+  useEffect(() => {
+    const handleOnline = () => {
+      if (navigator.onLine) retryPendingMessages()
+    }
+
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [pendingMessages, conversationId, userId])
 
   useEffect(() => {
     loadThread()
@@ -223,15 +295,24 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
         // Send browser notification if sender is not current user
         if (payload.new.sender_id !== userId) {
           sendBrowserNotification('New message', payload.new.body || 'You have a new message in your conversation')
+          markConversationRead(conversationId)
+        }
+        loadThread()
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+        if (payload.new?.sender_id !== userId) {
+          sendBrowserNotification('Message updated', payload.new?.body || 'A message in your conversation was updated')
         }
         loadThread()
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'offers', filter: `conversation_id=eq.${conversationId}` }, loadThread)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'offers', filter: `conversation_id=eq.${conversationId}` }, loadThread)
       .subscribe()
     
     // Mark conversation as read when opened
     markConversationRead(conversationId)
-    
+    markConversationNotificationsRead(userId, conversationId)
+
     // Subscribe to read receipt updates
     const unsubscribeReadUpdates = subscribeToMessageReadUpdates(conversationId, (updatedMessage) => {
       setItems((prev) =>
@@ -242,7 +323,6 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
         )
       )
     })
-
     // Subscribe to other user's presence
     let unsubscribePresence = null
     const setupPresenceSubscription = async () => {
@@ -279,7 +359,7 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
       if (unsubscribeReadUpdates) unsubscribeReadUpdates()
       if (unsubscribePresence) unsubscribePresence()
     }
-  }, [conversationId, userId])
+  }, [conversationId, userId, listingId])
 
   useEffect(() => {
     const messagePane = messagesRef.current
@@ -287,12 +367,74 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
     messagePane.scrollTo({ top: messagePane.scrollHeight, behavior: 'smooth' })
   }, [items])
 
+  const handleMessageEdit = async (messageId, newBody) => {
+    const trimmed = (newBody || '').trim()
+    const { data, error } = await supabase.rpc('edit_message', {
+      p_message_id: messageId,
+      p_new_body: trimmed,
+    })
+
+    if (error) throw error
+    if (!data?.success) {
+      throw new Error(data?.error || 'This message can no longer be edited.')
+    }
+
+    setItems((prev) => prev.map((item) => item.kind === 'message' && item.id === messageId
+      ? { ...item, body: trimmed, edited_at: item.edited_at || new Date().toISOString() }
+      : item))
+  }
+
+  const handleMessageDelete = async (messageId) => {
+    const { data, error } = await supabase.rpc('delete_message', {
+      p_message_id: messageId,
+    })
+
+    if (error) throw error
+    if (!data?.success) {
+      throw new Error(data?.error || 'This message could not be deleted.')
+    }
+
+    if (Array.isArray(data.storage_paths_to_remove) && data.storage_paths_to_remove.length > 0) {
+      const { error: removeError } = await supabase.storage
+        .from('message-attachments')
+        .remove(data.storage_paths_to_remove)
+
+      if (removeError) {
+        console.error('Failed to remove message attachments from storage:', removeError)
+      }
+    }
+
+    setItems((prev) => prev.map((item) => item.kind === 'message' && item.id === messageId
+      ? { ...item, body: '', is_deleted: true, deleted_at: item.deleted_at || new Date().toISOString() }
+      : item))
+    setAttachmentsByMessageId((prev) => {
+      const next = { ...prev }
+      delete next[messageId]
+      return next
+    })
+  }
+
   async function loadThread() {
     const { data: convo } = await supabase
       .from('conversations')
-      .select('*, buyer:buyer_id(id, business_name, full_name, avatar_url, verified_seller), seller:seller_id(id, business_name, full_name, avatar_url, verified_seller, paystack_recipient_code, paystack_subaccount_code)')
+      .select('*, listing:listing_id(id, title, price, images, slug), buyer:buyer_id(id, business_name, full_name, avatar_url, verified_seller), seller:seller_id(id, business_name, full_name, avatar_url, verified_seller, paystack_recipient_code, paystack_subaccount_code)')
       .eq('id', conversationId).single()
     setConversation(convo)
+
+    let nextListing = convo?.listing || null
+    if (listingId && listingId !== convo?.listing_id) {
+      const { data: contactedListing } = await supabase
+        .from('listings')
+        .select('id, title, price, images, slug')
+        .eq('id', listingId)
+        .maybeSingle()
+      nextListing = contactedListing || nextListing
+    }
+    setActiveListing(nextListing)
+    if (!listingContextInitialized.current && listingId && nextListing) {
+      setBody(`Hi, I'm interested in "${nextListing.title}". `)
+      listingContextInitialized.current = true
+    }
 
     const [{ data: messages }, { data: offers }] = await Promise.all([
       supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at'),
@@ -346,13 +488,39 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
 
   async function sendMessage(e) {
     e.preventDefault()
-    if (!body.trim() && selectedFiles.length === 0) return
+    const trimmedBody = body.trim()
+    if (!trimmedBody && selectedFiles.length === 0) return
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const optimisticMessage = {
+      id: tempId,
+      conversation_id: conversationId,
+      sender_id: userId,
+      body: trimmedBody || '',
+      created_at: new Date().toISOString(),
+      kind: 'message',
+      pending: true,
+      failed: false,
+      tempId,
+      read_at: null,
+      delivered_at: null,
+    }
+
+    setItems((prev) => [...prev, optimisticMessage])
+    setPendingMessages((prev) => [...prev, { tempId, body: trimmedBody, created_at: optimisticMessage.created_at }])
+    setBody('')
+    setSelectedFiles([])
+
+    if (!navigator.onLine) {
+      return
+    }
+
     setSending(true)
     setUploadingAttachments(true)
     try {
       const { data: message, error: messageError } = await supabase
         .from('messages')
-        .insert({ conversation_id: conversationId, sender_id: userId, body: body.trim() || '' })
+        .insert({ conversation_id: conversationId, sender_id: userId, body: trimmedBody || '' })
         .select()
         .single()
 
@@ -399,12 +567,13 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
         }
       }
 
-      setBody('')
-      setSelectedFiles([])
+      setItems((prev) => prev.map((entry) => entry.id === tempId ? { ...message, kind: 'message', pending: false, failed: false } : entry))
+      setPendingMessages((prev) => prev.filter((entry) => entry.tempId !== tempId))
       await loadThread()
     } catch (error) {
       console.error('Failed to send message:', error)
-      alert(error.message || 'Failed to send message.')
+      setItems((prev) => prev.map((entry) => entry.id === tempId ? { ...entry, pending: true, failed: true, error: error.message } : entry))
+      setPendingMessages((prev) => prev.map((entry) => entry.tempId === tempId ? { ...entry, pending: true, failed: true, error: error.message } : entry))
     } finally {
       setSending(false)
       setUploadingAttachments(false)
@@ -419,14 +588,17 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
   const isSellerInThread = !isSeller && other.verified_seller // Show badge only for sellers
   
   return (
-    <div className={isMobileFullscreen ? "flex h-full min-h-0 flex-col overflow-hidden bg-white" : "flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-hairline bg-white"}>
-      <div className="flex flex-col gap-2 border-b border-hairline p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-4">
+    <div
+      className={isMobileFullscreen ? "flex h-full min-h-0 flex-col overflow-hidden bg-white" : "flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-hairline bg-white"}
+      style={isMobileFullscreen ? { height: `calc(100dvh - ${keyboardOffset}px)` } : undefined}
+    >
+      <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-hairline bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {/* Back button for mobile */}
           {isMobileFullscreen && (
             <button
               onClick={onBackClick}
-              className="flex-shrink-0 rounded-full p-2 hover:bg-surfacealt transition"
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full hover:bg-surfacealt transition"
               aria-label="Back to conversations"
             >
               <svg className="h-5 w-5 text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -437,7 +609,7 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
           {/* Profile Picture */}
           <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-inksoft font-display text-xs font-bold text-surface">
             {other.avatar_url ? (
-              <img src={other.avatar_url} alt={other.business_name || other.full_name} className="h-full w-full object-cover" />
+              <img src={other.avatar_url} alt={other.business_name || other.full_name} loading="lazy" className="h-full w-full object-cover" />
             ) : (
               (other.business_name || other.full_name || '?').slice(0, 2).toUpperCase()
             )}
@@ -462,14 +634,14 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <button
             onClick={() => setReportMode(!reportMode)}
-            className="whitespace-nowrap rounded-full border border-hairline px-3 py-1.5 font-mono text-[11px] text-muted hover:border-marigold-deep hover:text-marigold-deep sm:px-4 sm:text-xs"
+            className="min-h-11 whitespace-nowrap rounded-full border border-hairline px-3 py-1.5 font-mono text-[11px] text-muted hover:border-marigold-deep hover:text-marigold-deep sm:px-4 sm:text-xs"
           >
             {latestOrderId ? 'Report / Dispute' : 'Report'}
           </button>
           {isSeller && (
             <button
               onClick={() => setOfferMode(!offerMode)}
-              className="whitespace-nowrap rounded-full bg-marigold px-3 py-1.5 font-mono text-[11px] font-semibold text-ink hover:bg-marigold-deep sm:px-4 sm:text-xs"
+              className="min-h-11 whitespace-nowrap rounded-full bg-marigold px-3 py-1.5 font-mono text-[11px] font-semibold text-ink hover:bg-marigold-deep sm:px-4 sm:text-xs"
             >
               {offerMode ? 'Cancel' : '+ Create offer'}
             </button>
@@ -486,6 +658,26 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
         />
       )}
 
+      {activeListing && (
+        <div className="border-b border-hairline bg-surfacealt/40 px-3 py-2">
+          <Link to={`/listing/${activeListing.slug}`} className="flex items-center gap-3 rounded-xl border border-hairline bg-white p-2 transition hover:border-seal/30">
+            {activeListing.images && (
+              <img
+                src={getListingImage(activeListing.images)}
+                alt={activeListing.title}
+                loading="lazy"
+                className="h-14 w-14 rounded-lg object-cover"
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-muted">Product</p>
+              <p className="truncate font-medium text-ink">{activeListing.title}</p>
+              <p className="text-xs text-seal">₦{Number(activeListing.price || 0).toLocaleString()}</p>
+            </div>
+          </Link>
+        </div>
+      )}
+
       <div ref={messagesRef} className="flex-1 space-y-2 overscroll-contain overflow-y-auto px-3 py-3 sm:px-4" style={{ minHeight: 0 }}>
         {items.map((item) =>
           item.kind === 'offer' ? (
@@ -496,11 +688,19 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
               conversationId={conversationId}
               userId={userId}
               buyerEmail={userEmail}
-              sellerRecipientCode={conversation.seller.paystack_recipient_code}
-              sellerSubaccount={conversation.seller.paystack_subaccount_code}
+              sellerRecipientCode={conversation?.seller?.paystack_recipient_code}
+              sellerSubaccount={conversation?.seller?.paystack_subaccount_code}
+              onPaymentComplete={loadThread}
             />
           ) : (
-            <MessageBubble key={item.id} message={item} isMine={item.sender_id === userId} attachments={attachmentsByMessageId[item.id] || []} />
+            <MessageBubble
+              key={item.id}
+              message={item}
+              isMine={item.sender_id === userId}
+              attachments={attachmentsByMessageId[item.id] || []}
+              onEdit={handleMessageEdit}
+              onDelete={handleMessageDelete}
+            />
           )
         )}
         <div ref={bottomRef} />
@@ -509,7 +709,11 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
       {offerMode ? (
         <OfferForm conversationId={conversationId} sellerId={userId} onDone={() => setOfferMode(false)} />
       ) : (
-        <form onSubmit={sendMessage} className="shrink-0 border-t border-hairline bg-white px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:py-3 sm:pb-3">
+        <form
+          onSubmit={sendMessage}
+          className="shrink-0 border-t border-hairline bg-white px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:py-3 sm:pb-3"
+          style={isMobileFullscreen ? { paddingBottom: `calc(${Math.max(keyboardOffset, 0)}px + env(safe-area-inset-bottom))` } : undefined}
+        >
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <input
               type="file"
@@ -531,9 +735,23 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
             />
             <button
               type="submit" disabled={sending || uploadingAttachments}
-              className="flex-shrink-0 rounded-full bg-seal px-4 sm:px-5 py-2 sm:py-2.5 font-body text-xs sm:text-sm font-semibold text-surface hover:bg-seal/90 disabled:opacity-50 transition-colors"
+              aria-label={uploadingAttachments ? 'Uploading attachment' : sending ? 'Sending message' : 'Send message'}
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-seal text-surface hover:bg-seal/90 disabled:opacity-50 transition-colors sm:h-12 sm:w-12"
             >
-              {uploadingAttachments ? 'Uploading…' : sending ? 'Sending…' : 'Send'}
+              {uploadingAttachments ? (
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeOpacity="0.35" />
+                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              ) : sending ? (
+                <svg className="h-4 w-4 animate-pulse" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 12.5 19 4l-3.8 15.2-4.4-6.4L4 12.5Z" fill="currentColor" />
+                </svg>
+              ) : (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3 11.5 20 4l-4.2 16-3.5-6.1L3 11.5Z" fill="currentColor" />
+                </svg>
+              )}
             </button>
           </div>
         </form>
@@ -542,9 +760,83 @@ function Thread({ conversationId, userId, userEmail, isMobileFullscreen, onBackC
   )
 }
 
-function MessageBubble({ message, isMine, attachments = [] }) {
+function getListingImage(images) {
+  if (Array.isArray(images)) return images[0] || ''
+  if (typeof images !== 'string') return ''
+  try {
+    const parsed = JSON.parse(images)
+    return Array.isArray(parsed) ? parsed[0] || '' : ''
+  } catch {
+    return images
+  }
+}
+
+function MediaLightbox({ media, onClose }) {
+  useEffect(() => {
+    if (!media) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose()
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [media, onClose])
+
+  if (!media) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" aria-label="Media viewer">
+      <button type="button" onClick={onClose} aria-label="Close media viewer" className="absolute right-4 top-4 rounded-full bg-white/10 px-4 py-2 text-2xl text-white hover:bg-white/20">×</button>
+      {media.type === 'video' ? (
+        <video src={media.url} controls autoPlay className="max-h-[90vh] max-w-[90vw] object-contain" />
+      ) : (
+        <img src={media.url} alt="Shared media" className="max-h-[90vh] max-w-[90vw] object-contain" />
+      )}
+    </div>
+  )
+}
+
+function MessageBubble({ message, isMine, attachments = [], onEdit, onDelete }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [draft, setDraft] = useState(message.body || '')
+  const [lightboxMedia, setLightboxMedia] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [currentTime, setCurrentTime] = useState(Date.now())
+
+  useEffect(() => {
+    setDraft(message.body || '')
+  }, [message.body])
+
+  useEffect(() => {
+    if (!message.created_at) return undefined
+
+    const expiresAt = new Date(message.created_at).getTime() + 5 * 60 * 1000
+    const remaining = expiresAt - Date.now()
+    if (remaining <= 0) {
+      setCurrentTime(Date.now())
+      return undefined
+    }
+
+    const timer = window.setTimeout(() => setCurrentTime(Date.now()), remaining)
+    return () => window.clearTimeout(timer)
+  }, [message.created_at])
+
+  const isDeleted = Boolean(message.is_deleted || message.deleted_at)
+  const isEditable = isMine && !isDeleted && message.created_at && currentTime - new Date(message.created_at).getTime() < 5 * 60 * 1000
+
   const getStatusDisplay = () => {
     if (!isMine) return null
+    if (message.pending) {
+      return <span className="text-[10px] text-amber-700">{message.failed ? '!' : '⏱️'}</span>
+    }
     if (!message.read_at && !message.delivered_at) {
       return <span className="text-xs text-muted">⏱️</span>
     }
@@ -554,66 +846,174 @@ function MessageBubble({ message, isMine, attachments = [] }) {
     return <span className="text-xs text-seal">✓✓</span>
   }
 
+  const handleEdit = async () => {
+    if (!onEdit) return
+    try {
+      setSaving(true)
+      await onEdit(message.id, draft)
+      setIsEditing(false)
+      setMenuOpen(false)
+    } catch (error) {
+      console.error('Failed to edit message:', error)
+      alert(error.message || 'Failed to edit message.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!onDelete) return
+    try {
+      setDeleting(true)
+      await onDelete(message.id)
+      setMenuOpen(false)
+    } catch (error) {
+      console.error('Failed to delete message:', error)
+      alert(error.message || 'Failed to delete message.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
-    <div className={`flex w-full ${isMine ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex items-end gap-1.5 max-w-[70%]`}>
-        {/* Message bubble */}
-        <div className={`px-4 py-2.5 text-sm leading-relaxed break-words ${
-          isMine 
-            ? 'rounded-3xl rounded-br-sm bg-seal text-surface' 
-            : 'rounded-3xl rounded-bl-sm bg-surfacealt text-ink'
-        }`}>
-          {message.flagged ? (
-            <p className="italic text-marigold-deep">
-              ⚠️ This message was hidden — it looked like it contained bank account details. For your
-              safety, keep payments inside Trustall checkout.
-            </p>
-          ) : (
-            <>
-              {message.body && <p className="whitespace-pre-wrap">{message.body}</p>}
-              {attachments.length > 0 && (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {attachments.map((attachment) => (
-                    <div key={attachment.id} className="overflow-hidden rounded-xl border border-current/15 bg-white/10">
-                      {attachment.flagged ? (
-                        <div className="p-3 text-xs italic text-marigold-deep">
-                          ⚠️ This image was hidden — it looked like it contained contact or bank details. For your safety, keep payments and contact inside Trustall.
-                        </div>
-                      ) : !attachment.signed_url ? (
-                        <div className="flex h-36 w-full items-center justify-center bg-black/10 text-xs text-current/60">
-                          Media unavailable
-                        </div>
-                      ) : attachment.file_type === 'video' ? (
-                        <video controls src={attachment.signed_url} className="h-36 w-full object-cover" />
-                      ) : (
-                        <img src={attachment.signed_url} alt="Shared media" className="h-36 w-full object-cover" />
-                      )}
-                    </div>
-                  ))}
+    <>
+      <div className={`flex w-full ${isMine ? 'justify-end' : 'justify-start'}`}>
+        <div className={`relative flex max-w-[70%] items-end gap-1.5`}>
+          {isMine && !isDeleted && (
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Message actions"
+                onClick={() => setMenuOpen((current) => !current)}
+                className="mb-1 flex h-7 w-7 items-center justify-center rounded-full bg-surfacealt text-sm text-muted hover:bg-surfacealt/80"
+              >
+                ⋯
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 rounded-xl border border-hairline bg-white p-1 shadow-lg">
+                  {isEditable && (
+                    <button type="button" onClick={() => { setIsEditing(true); setMenuOpen(false) }} className="block w-full rounded-lg px-3 py-1.5 text-left text-xs text-ink hover:bg-surfacealt">
+                      Edit
+                    </button>
+                  )}
+                  <button type="button" onClick={handleDelete} disabled={deleting} className="block w-full rounded-lg px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 disabled:opacity-60">
+                    {deleting ? 'Deleting…' : 'Delete'}
+                  </button>
                 </div>
               )}
-            </>
+            </div>
+          )}
+
+          <div className={`min-w-0 px-4 py-2.5 text-sm leading-relaxed break-words ${
+            isMine 
+              ? 'rounded-3xl rounded-br-sm bg-seal text-surface' 
+              : 'rounded-3xl rounded-bl-sm bg-surfacealt text-ink'
+          }`}>
+            {isDeleted ? (
+              <p className="text-[13px] italic text-current/70">This message was deleted</p>
+            ) : message.flagged ? (
+              <p className="italic text-marigold-deep">
+                ⚠️ This message was hidden — it looked like it contained bank account details. For your
+                safety, keep payments inside Trustall checkout.
+              </p>
+            ) : isEditing ? (
+              <div className="min-w-[220px]">
+                <textarea
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  rows={3}
+                  className="w-full rounded-xl border border-white/30 bg-white/10 px-2 py-2 text-sm text-current placeholder:text-current/60 focus:outline-none focus:ring-2 focus:ring-white/50"
+                />
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  <button type="button" onClick={() => { setIsEditing(false); setDraft(message.body || '') }} className="rounded-full bg-white/10 px-3 py-1 text-[11px] text-current hover:bg-white/15">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={handleEdit} disabled={saving || draft.trim() === ''} className="rounded-full bg-white px-3 py-1 font-medium text-seal hover:bg-white/90 disabled:opacity-60">
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {message.body && <p className="whitespace-pre-wrap">{message.body}{message.edited_at && <span className="ml-1 text-[10px] opacity-75">(edited)</span>}</p>}
+                {message.pending && isMine && (
+                  <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-amber-700/80">
+                    {message.failed ? 'Not sent yet' : 'Sending…'}
+                  </p>
+                )}
+                {attachments.length > 0 && (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {attachments.map((attachment) => (
+                      <button
+                        key={attachment.id}
+                        type="button"
+                        onClick={() => setLightboxMedia({
+                          type: attachment.file_type === 'video' ? 'video' : 'image',
+                          url: attachment.signed_url,
+                        })}
+                        className="overflow-hidden rounded-xl border border-current/15 bg-white/10 text-left"
+                        aria-label={attachment.file_type === 'video' ? 'Open video attachment' : 'Open image attachment'}
+                      >
+                        {attachment.flagged ? (
+                          <div className="p-3 text-xs italic text-marigold-deep">
+                            ⚠️ This image was hidden — it looked like it contained contact or bank details. For your safety, keep payments and contact inside Trustall.
+                          </div>
+                        ) : !attachment.signed_url ? (
+                          <div className="flex h-36 w-full items-center justify-center bg-black/10 text-xs text-current/60">
+                            Media unavailable
+                          </div>
+                        ) : attachment.file_type === 'video' ? (
+                          <div className="relative">
+                            <video src={attachment.signed_url} className="h-36 w-full object-cover" loading="lazy" muted playsInline />
+                            <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-1 font-mono text-[9px] text-white">Video</span>
+                          </div>
+                        ) : (
+                          <img src={attachment.signed_url} alt="Shared media" className="h-36 w-full object-cover" loading="lazy" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {isMine && (
+            <div className="flex-shrink-0 pb-0.5">
+              {getStatusDisplay()}
+            </div>
           )}
         </div>
-        
-        {/* Status indicator */}
-        {isMine && (
-          <div className="flex-shrink-0 pb-0.5">
-            {getStatusDisplay()}
-          </div>
-        )}
       </div>
-    </div>
+      <MediaLightbox media={lightboxMedia} onClose={() => setLightboxMedia(null)} />
+    </>
   )
 }
 
-function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode, sellerSubaccount }) {
+function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode, sellerSubaccount, onPaymentComplete }) {
+  const navigate = useNavigate()
   const [paying, setPaying] = useState(false)
+  const supportEmail = getSupportEmail()
   const itemTotal = Number(offer.price) + Number(offer.delivery_fee)
   const sellerFee = Math.min(itemTotal * 0.05, 5000) // 5%, capped at ₦5,000
   const buyerFee = 100 // flat escrow protection fee
   const totalCharged = itemTotal + buyerFee
   const hasConnectedPayout = Boolean(sellerRecipientCode || sellerSubaccount)
+
+  async function openAcceptedOfferOrder() {
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('offer_id', offer.id)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Failed to find order for accepted offer:', error)
+      navigate('/orders')
+      return
+    }
+    navigate(order?.id ? `/orders/${order.id}` : '/orders')
+  }
 
   function acceptAndPay() {
     if (!window.PaystackPop) {
@@ -656,9 +1056,9 @@ function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode, s
             }
 
             // Payment verified, now record it as pending
-            if (result.order_id) {
+            if (result.order?.id || result.order_id) {
               const { error: pendingError } = await supabase.rpc('record_payment_as_pending', {
-                p_order_id: result.order_id,
+                p_order_id: result.order?.id || result.order_id,
               })
 
               if (pendingError) {
@@ -669,6 +1069,7 @@ function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode, s
             }
 
             setPaying(false)
+            await onPaymentComplete?.()
             alert('Payment secured. Funds will be released to the seller once you confirm delivery.')
           } catch (err) {
             setPaying(false)
@@ -683,7 +1084,19 @@ function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode, s
   }
 
   return (
-    <div className="max-w-[85%] rounded-2xl border border-marigold/30 bg-gradient-to-br from-marigold/5 to-white p-4 shadow-sm hover:shadow-md transition">
+    <div
+      className={`max-w-[85%] rounded-2xl border border-marigold/30 bg-gradient-to-br from-marigold/5 to-white p-4 shadow-sm transition ${offer.status === 'accepted' ? 'cursor-pointer hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal' : 'hover:shadow-md'}`}
+      onClick={offer.status === 'accepted' ? openAcceptedOfferOrder : undefined}
+      onKeyDown={offer.status === 'accepted' ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          openAcceptedOfferOrder()
+        }
+      } : undefined}
+      role={offer.status === 'accepted' ? 'link' : undefined}
+      tabIndex={offer.status === 'accepted' ? 0 : undefined}
+      aria-label={offer.status === 'accepted' ? `Open order for accepted offer: ${offer.item_title}` : undefined}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <p className="font-mono text-[9px] uppercase tracking-widest text-marigold-deep font-semibold">Offer</p>
@@ -794,18 +1207,6 @@ function OfferForm({ conversationId, sellerId, onDone }) {
         .eq('id', conversationId)
         .single()
       
-      if (conversation) {
-        await supabase.from('notifications').insert({
-          recipient_id: conversation.buyer_id,
-          sender_id: sellerId,
-          type: 'offer_received',
-          title: 'New offer from seller',
-          message: `${itemTitle} — ₦${Number(price).toLocaleString()} (Delivery: ₦${displayDeliveryFee.toLocaleString()})`,
-          related_conversation_id: conversationId,
-          related_offer_id: offer.id,
-        })
-      }
-
       setSubmitting(false)
       onDone()
     } catch (err) {
@@ -816,7 +1217,7 @@ function OfferForm({ conversationId, sellerId, onDone }) {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 border-t border-hairline bg-gradient-to-br from-seal/5 to-surface p-4">
+    <form onSubmit={submit} className="min-h-0 max-h-[65%] shrink-0 space-y-3 overflow-y-auto border-t border-hairline bg-gradient-to-br from-seal/5 to-surface p-4 sm:max-h-[70%]">
       <input 
         required 
         placeholder="Item title" 

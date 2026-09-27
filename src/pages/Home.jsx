@@ -62,8 +62,8 @@ export default function Home() {
               <Link to="/browse" className="rounded-full bg-marigold px-7 py-3 font-body text-sm font-semibold text-ink transition hover:bg-marigold-deep">
                 Browse listings
               </Link>
-              <Link to="/sell" className="rounded-full border border-ink px-7 py-3 font-body text-sm font-medium text-ink transition hover:border-seal hover:text-seal">
-                Start selling
+              <Link to="/sellers" className="rounded-full border border-ink px-7 py-3 font-body text-sm font-medium text-ink transition hover:border-seal hover:text-seal">
+                See all sellers
               </Link>
             </div>
           </div>
