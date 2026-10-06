@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Activity, BookOpenText, ChevronDown, CircleDollarSign, ClipboardCheck, FileWarning, LayoutDashboard, Megaphone, Scale, ShieldCheck, Store, Users, Wallet, X } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient.js'
 import { LISTING_CATEGORIES } from '../lib/listingCategories.js'
 import { NIGERIAN_BANKS } from '../lib/nigerianBanks.js'
@@ -207,65 +208,132 @@ function RichTextEditor({ value, onChange, placeholder = 'Start writing…' }) {
   )
 }
 
+const ADMIN_SECTIONS = [
+  { group: 'Workspace', items: [{ id: 'overview', label: 'Overview', icon: LayoutDashboard, title: 'Operations overview', description: 'Marketplace health, activity and review queues.' }] },
+  { group: 'Trust & safety', items: [
+    { id: 'verification', label: 'Seller verification', icon: ShieldCheck, title: 'Seller verification', description: 'Review identity and seller verification requests.' },
+    { id: 'reports', label: 'Reports & moderation', icon: FileWarning, title: 'Reports & moderation', description: 'Review reports and manage marketplace safety.' },
+    { id: 'disputes', label: 'Disputes', icon: Scale, title: 'Dispute resolution', description: 'Investigate and resolve buyer and seller cases.' },
+    { id: 'listings', label: 'Listings', icon: Store, title: 'Listing moderation', description: 'Review listings and manage marketplace visibility.' },
+  ] },
+  { group: 'Finance & people', items: [
+    { id: 'payouts', label: 'Pending payouts', icon: Wallet, title: 'Pending payouts', description: 'Review payout requests and transfer status.' },
+    { id: 'earnings', label: 'Trustall earnings', icon: CircleDollarSign, title: 'Trustall earnings', description: 'Platform commission, withdrawals and available balance.' },
+    { id: 'users', label: 'Mediators', icon: Users, title: 'Mediator management', description: 'Manage the people supporting dispute resolution.' },
+  ] },
+  { group: 'Communications', items: [
+    { id: 'broadcast', label: 'Broadcast', icon: Megaphone, title: 'Broadcast center', description: 'Send targeted updates to Trustall members.' },
+    { id: 'blog', label: 'Blog', icon: BookOpenText, title: 'Editorial', description: 'Manage Trustall articles and publishing.' },
+    { id: 'catalog', label: 'Service catalog', icon: ClipboardCheck, title: 'Service catalog', description: 'Manage the service categories and catalog.' },
+  ] },
+]
+
 function AdminHome({ onLogout, email }) {
   const [tab, setTab] = useState('overview')
+  const [mobileSectionsOpen, setMobileSectionsOpen] = useState(false)
+  const currentSection = ADMIN_SECTIONS.flatMap((group) => group.items).find((item) => item.id === tab) || ADMIN_SECTIONS[0].items[0]
+  const renderPanel = () => {
+    if (tab === 'overview') return <AdminOverview />
+    if (tab === 'verification') return <VerificationQueue />
+    if (tab === 'reports') return <ReportsQueue />
+    if (tab === 'disputes') return <DisputesQueue />
+    if (tab === 'listings') return <ListingModeration />
+    if (tab === 'broadcast') return <BroadcastPanel />
+    if (tab === 'users') return <MediatorManagement />
+    if (tab === 'payouts') return <PendingPayouts />
+    if (tab === 'earnings') return <TrustallEarnings />
+    if (tab === 'blog') return <BlogDashboard />
+    return <ServiceCatalogManager />
+  }
 
   return (
-    <div className="admin-page">
-      <div className="mx-auto max-w-4xl px-6 pt-16">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-widest text-seal">Admin</p>
-            <p className="mt-1 text-sm text-muted">Signed in as {email}</p>
+    <div className="admin-page min-h-screen bg-[#f3f5f2] text-ink">
+      <div className="mx-auto grid min-h-screen max-w-[1600px] lg:grid-cols-[248px_minmax(0,1fr)]">
+        <aside className="hidden border-r border-[#e2e8e2] bg-[#172c25] text-white lg:flex lg:flex-col">
+          <div className="border-b border-white/10 px-5 py-6">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#2f6e51] text-white"><ShieldCheck size={21} /></span>
+              <div><p className="font-display text-sm font-bold">Trustall</p><p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.2em] text-white/55">Operations</p></div>
+            </div>
           </div>
-          <button onClick={onLogout} className="font-mono text-sm text-muted hover:text-ink">Sign out</button>
-        </div>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button
-            onClick={() => setTab('overview')}
-            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'overview' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setTab('verification')}
-            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'verification' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
-          >
-            Seller verification
-          </button>
-          <button
-            onClick={() => setTab('reports')}
-            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'reports' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
-          >
-            Reports & moderation
-          </button>
-          <button
-            onClick={() => setTab('disputes')}
-            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'disputes' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
-          >
-            Disputes
-          </button>
-          <button onClick={() => setTab('listings')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'listings' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}>Listings</button>
-          <button onClick={() => setTab('broadcast')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'broadcast' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Broadcast</button>
-          <button onClick={() => setTab('users')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'users' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}>Mediators</button>
-          <button onClick={() => setTab('payouts')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'payouts' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Pending payouts</button>
-          <button onClick={() => setTab('earnings')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'earnings' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Trustall Earnings</button>
-          <button
-            onClick={() => setTab('blog')}
-            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'blog' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}
-          >
-            Blog
-          </button>
-          <button
-            onClick={() => setTab('catalog')}
-            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'catalog' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}
-          >
-            Service catalog
-          </button>
-        </div>
+          <nav aria-label="Admin sections" className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
+            {ADMIN_SECTIONS.map((group) => (
+              <div key={group.group}>
+                <p className="px-3 font-mono text-[9px] uppercase tracking-[0.2em] text-white/40">{group.group}</p>
+                <div className="mt-2 space-y-1">
+                  {group.items.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined} className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-medium transition ${tab === item.id ? 'bg-white/12 text-white shadow-inner' : 'text-white/65 hover:bg-white/6 hover:text-white'}`}>
+                        <Icon size={16} className={tab === item.id ? 'text-[#a9e3c1]' : 'text-white/45'} />
+                        <span>{item.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
+          <div className="border-t border-white/10 p-3">
+            <button onClick={onLogout} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-xs font-medium text-white/65 transition hover:bg-white/6 hover:text-white">Sign out</button>
+          </div>
+        </aside>
+
+        <main className="min-w-0">
+          <header className="border-b border-[#e2e8e2] bg-white px-4 py-5 sm:px-7 lg:px-9">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-seal">Trustall operations / {currentSection.label}</p>
+                <h1 className="mt-1 font-display text-xl font-bold text-ink sm:text-2xl">{currentSection.title}</h1>
+                <p className="mt-1 text-xs text-muted">{currentSection.description}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="hidden max-w-[240px] truncate rounded-full border border-hairline bg-surface px-3 py-2 font-mono text-[10px] text-muted sm:inline-flex">{email}</span>
+                <button onClick={onLogout} className="rounded-full border border-hairline px-4 py-2 font-mono text-[10px] font-semibold text-muted transition hover:border-seal hover:text-seal lg:hidden">Sign out</button>
+                <span className="hidden h-9 w-9 items-center justify-center rounded-full bg-seal/10 text-seal sm:flex"><Activity size={17} /></span>
+              </div>
+            </div>
+          </header>
+
+          <div className="border-b border-[#e2e8e2] bg-white px-4 py-3 lg:hidden">
+            <button type="button" onClick={() => setMobileSectionsOpen(true)} aria-haspopup="dialog" className="flex min-h-12 w-full items-center justify-between rounded-xl border border-hairline bg-surface px-4 text-left">
+              <span className="flex items-center gap-3">
+                {(() => { const Icon = currentSection.icon; return <Icon size={17} className="text-seal" /> })()}
+                <span><span className="block font-mono text-[9px] uppercase tracking-[0.17em] text-muted">Current section</span><span className="mt-0.5 block text-sm font-semibold text-ink">{currentSection.label}</span></span>
+              </span>
+              <ChevronDown size={17} className="text-muted" />
+            </button>
+          </div>
+
+          {mobileSectionsOpen && (
+            <div className="fixed inset-0 z-[80] flex items-end bg-ink/35 p-0 lg:hidden" onMouseDown={(event) => { if (event.target === event.currentTarget) setMobileSectionsOpen(false) }}>
+              <section role="dialog" aria-modal="true" aria-labelledby="admin-section-picker-title" className="max-h-[82dvh] w-full overflow-y-auto rounded-t-[24px] bg-white px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl">
+                <div className="mb-4 flex items-center justify-between border-b border-hairline pb-4">
+                  <div><p className="font-mono text-[9px] uppercase tracking-[0.2em] text-seal">Trustall operations</p><h2 id="admin-section-picker-title" className="mt-1 font-display text-lg font-bold text-ink">Choose a workspace</h2></div>
+                  <button type="button" onClick={() => setMobileSectionsOpen(false)} aria-label="Close workspace selector" className="flex h-10 w-10 items-center justify-center rounded-full border border-hairline text-muted"><X size={18} /></button>
+                </div>
+                <nav aria-label="Admin sections" className="space-y-5">
+                  {ADMIN_SECTIONS.map((group) => (
+                    <div key={group.group}>
+                      <p className="mb-2 px-1 font-mono text-[9px] uppercase tracking-[0.2em] text-muted">{group.group}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {group.items.map((item) => {
+                          const Icon = item.icon
+                          return <button key={item.id} type="button" onClick={() => { setTab(item.id); setMobileSectionsOpen(false) }} aria-current={tab === item.id ? 'page' : undefined} className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 text-left text-xs font-semibold ${tab === item.id ? 'border-seal bg-seal/5 text-seal' : 'border-hairline text-ink'}`}><Icon size={15} className="shrink-0" /><span>{item.label}</span></button>
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </nav>
+              </section>
+            </div>
+          )}
+
+          <div className="min-w-0 py-2 sm:py-4">
+            {renderPanel()}
+          </div>
+        </main>
       </div>
-      {tab === 'overview' ? <AdminOverview /> : tab === 'verification' ? <VerificationQueue /> : tab === 'reports' ? <ReportsQueue /> : tab === 'disputes' ? <DisputesQueue /> : tab === 'listings' ? <ListingModeration /> : tab === 'broadcast' ? <BroadcastPanel /> : tab === 'users' ? <MediatorManagement /> : tab === 'payouts' ? <PendingPayouts /> : tab === 'earnings' ? <TrustallEarnings /> : tab === 'blog' ? <BlogDashboard /> : null}
-      {tab === 'catalog' && <ServiceCatalogManager />}
     </div>
   )
 }
@@ -676,10 +744,9 @@ function AdminOverview() {
   const topReferrers = Object.entries(data.referrals.reduce((counts, row) => ({ ...counts, [row.referrer_id]: (counts[row.referrer_id] || 0) + 1 }), {})).sort(([, first], [, second]) => second - first).slice(0, 5)
 
   return (
-    <section className="mx-auto max-w-6xl px-6 py-10">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div><p className="font-mono text-xs uppercase tracking-widest text-seal">Operations</p><h1 className="mt-2 font-display text-2xl font-bold text-ink">Trustall control room</h1></div>
-        <label className="font-mono text-xs text-muted">Window <select value={days} onChange={(event) => setDays(Number(event.target.value))} className="ml-2 rounded-lg border border-hairline bg-white px-2 py-1 text-ink"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option></select></label>
+    <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="flex flex-wrap items-center justify-end gap-4">
+        <label className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Reporting window <select value={days} onChange={(event) => setDays(Number(event.target.value))} className="ml-2 rounded-lg border border-hairline bg-white px-3 py-2 font-body text-xs normal-case tracking-normal text-ink"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option></select></label>
       </div>
       {error && <p className="mt-4 rounded-xl border border-marigold/30 bg-marigold/10 p-3 text-xs text-marigold-deep">{error} Check that the latest Supabase migration is applied.</p>}
 

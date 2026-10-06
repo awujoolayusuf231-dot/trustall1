@@ -106,13 +106,17 @@ function GlobalSetup() {
 }
 
 export default function App() {
+  const { pathname } = useLocation()
+  const isAdminRoute = pathname.startsWith('/admin')
+  const isMessagesRoute = pathname.startsWith('/messages')
+
   return (
     <RoleProvider>
       <ErrorBoundary>
         <GlobalSetup />
         <div className="app-shell flex min-h-screen flex-col bg-surface">
-          <Navbar />
-          <main className="flex-1 pb-24 md:pb-0">
+          {!isAdminRoute && <Navbar />}
+          <main className={isAdminRoute ? 'flex-1' : 'flex-1 pb-24 md:pb-0'}>
             <ScrollToTop />
             <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center text-sm text-muted">Loading…</div>}>
               <Routes>
@@ -149,9 +153,9 @@ export default function App() {
               </Routes>
             </Suspense>
           </main>
-          <MobileBottomNav />
-          <Footer />
-          <TrustallChat />
+          {!isAdminRoute && <MobileBottomNav />}
+          {!isAdminRoute && !isMessagesRoute && <Footer />}
+          {!isAdminRoute && !isMessagesRoute && <TrustallChat />}
           <Analytics />
           <SpeedInsights />
         </div>
