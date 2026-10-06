@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bookmark, BookmarkCheck } from 'lucide-react'
+import { BookmarkCheck, Trash2 } from 'lucide-react'
 import { useProfile } from '../lib/useProfile.js'
-import { loadSavedListingIds, unsaveListing } from '../lib/listingFeatures.js'
+import { clearSavedListings, loadSavedListingIds, unsaveListing } from '../lib/listingFeatures.js'
 import { supabase } from '../lib/supabaseClient.js'
 
 export default function SavedListings() {
@@ -10,6 +10,8 @@ export default function SavedListings() {
   const navigate = useNavigate()
   const [listings, setListings] = useState([])
   const [loadingListings, setLoadingListings] = useState(true)
+  const [clearing, setClearing] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     if (!loading && !session) navigate('/auth', { state: { redirectTo: '/saved' } })
@@ -42,12 +44,37 @@ export default function SavedListings() {
     setListings((current) => current.filter((listing) => listing.id !== listingId))
   }
 
+  async function clearAll() {
+    if (!window.confirm('Remove all saved listings from your library?')) return
+    setClearing(true)
+    setError('')
+    try {
+      await clearSavedListings(session.user.id)
+      setListings([])
+    } catch (clearError) {
+      console.error('Failed to clear saved listings:', clearError)
+      setError('Could not clear saved listings. Please try again.')
+    } finally {
+      setClearing(false)
+    }
+  }
+
   if (loading || !session) return <div className="px-6 py-24 text-center text-muted">Loading saved listings…</div>
 
   return (
-    <section className="mx-auto max-w-6xl px-6 py-16">
-      <p className="font-mono text-xs uppercase tracking-widest text-seal">Your library</p>
-      <h1 className="mt-3 font-display text-3xl font-bold text-ink">Saved listings</h1>
+    <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-14">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-hairline pb-5">
+        <div>
+          <p className="font-mono text-xs uppercase tracking-widest text-seal">Your library</p>
+          <h1 className="mt-2 font-display text-3xl font-bold text-ink">Saved listings</h1>
+        </div>
+        {listings.length > 0 && (
+          <button type="button" onClick={clearAll} disabled={clearing} className="inline-flex items-center gap-2 rounded-full border border-hairline px-4 py-2 text-xs font-semibold text-muted transition hover:border-red-300 hover:text-red-700 disabled:opacity-50">
+            <Trash2 size={15} aria-hidden="true" />{clearing ? 'Clearing…' : 'Clear all'}
+          </button>
+        )}
+      </div>
+      {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
       {loadingListings && <p className="mt-10 text-muted">Loading saved listings…</p>}
       {!loadingListings && listings.length === 0 && <p className="mt-10 text-muted">You have not saved any listings yet.</p>}
       <div className="listing-grid mt-10 gap-6">

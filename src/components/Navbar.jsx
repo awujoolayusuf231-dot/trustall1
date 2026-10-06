@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { Menu, X } from 'lucide-react'
 import { useProfile } from '../lib/useProfile.js'
 import { supabase } from '../lib/supabaseClient.js'
 import { NotificationBell } from './NotificationBell.jsx'
@@ -7,6 +8,10 @@ import { NotificationBell } from './NotificationBell.jsx'
 function getAvatarUrl(profile) {
   if (!profile) return null
   return profile.avatar_url || null
+}
+
+function isSellerProfile(profile) {
+  return Boolean(profile?.is_seller || profile?.verified_seller || profile?.seller_level >= 1 || profile?.status === 'seller')
 }
 
 function SealMark({ size = 30 }) {
@@ -57,6 +62,7 @@ function MobileNavIcon({ type, active }) {
 function AccountMenu({ profile }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const isSellerAccount = isSellerProfile(profile)
 
   useEffect(() => {
     function onClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
@@ -68,6 +74,8 @@ function AccountMenu({ profile }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
+        aria-label="Open account menu"
+        aria-expanded={open}
         className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-inksoft font-display text-xs font-bold text-surface"
       >
         {getAvatarUrl(profile) ? (
@@ -77,14 +85,20 @@ function AccountMenu({ profile }) {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-48 rounded-xl border border-hairline bg-white p-1.5 shadow-lg">
+        <div className="absolute right-0 mt-2 w-60 rounded-xl border border-hairline bg-white p-1.5 shadow-lg">
+          <p className="px-3 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[0.2em] text-muted">Your account</p>
+          <Link to="/account" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">{isSellerAccount ? 'My storefront' : 'My profile'}</Link>
           <Link to="/messages" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Messages</Link>
           <Link to="/orders" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Orders</Link>
-          <Link to="/purchases" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Purchases</Link>
           <Link to="/saved" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Saved listings</Link>
-          <Link to="/trust-safety" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Trust & Safety</Link>
           <Link to="/refer" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Refer a friend</Link>
-          <Link to="/sell" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Seller dashboard</Link>
+          {isSellerAccount && (
+            <>
+              <div className="my-1 border-t border-hairline" />
+              <p className="px-3 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[0.2em] text-muted">Seller tools</p>
+              <Link to="/sell" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Seller workspace</Link>
+            </>
+          )}
           {profile?.verified_seller && (
             <Link to="/marketing" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-ink hover:bg-surfacealt">Marketing</Link>
           )}
@@ -102,18 +116,19 @@ function AccountMenu({ profile }) {
 }
 
 const NAV_LINKS = [
-  { to: '/#how-it-works', label: 'How it works', anchor: true },
+  { to: '/how-it-works', label: 'How it works' },
   { to: '/sell', label: 'For businesses' },
   { to: '/browse', label: 'Verified businesses' },
   { to: '/sellers', label: 'All sellers' },
+  { to: '/trust-safety', label: 'Trust & Safety' },
   { to: '/blog', label: 'Blog' },
-  { to: '/about', label: 'About' },
 ]
 
 export function MobileBottomNav() {
   const { session } = useProfile()
   const location = useLocation()
   const [messageBadge, setMessageBadge] = useState(0)
+  const isConversationOpen = /^\/messages\/[^/]+/.test(location.pathname)
 
   useEffect(() => {
     if (!session?.user?.id) return
@@ -163,6 +178,8 @@ export function MobileBottomNav() {
     { to: '/sell', label: 'Sell', icon: 'sell' },
   ]
 
+  if (isConversationOpen) return null
+
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 px-3 py-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur md:hidden">
       <div className="mx-auto flex max-w-md items-center justify-around rounded-full border border-hairline bg-white/85 p-1.5 shadow-[0_12px_35px_rgba(15,23,42,0.10)]">
@@ -192,7 +209,22 @@ export default function Navbar() {
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
-  const hideHeaderOnMobileMessageRoute = location.pathname.startsWith('/messages') && typeof window !== 'undefined' && window.innerWidth < 768
+  const hideHeaderOnMobileMessageRoute = location.pathname.startsWith('/messages')
+  const isSellerAccount = isSellerProfile(profile)
+  const visibleNavLinks = session && isSellerAccount ? NAV_LINKS.filter((link) => link.to !== '/sell') : NAV_LINKS
+
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (!mobileOpen) return undefined
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMobileOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [mobileOpen])
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false)
@@ -208,7 +240,7 @@ export default function Navbar() {
   }, [])
 
   return (
-    <header className={`sticky top-0 z-50 border-b border-hairline bg-surface/90 backdrop-blur ${hideHeaderOnMobileMessageRoute ? 'hidden md:block' : ''}`}>
+    <header className={`sticky top-0 z-50 border-b border-hairline bg-surface/95 backdrop-blur-md ${hideHeaderOnMobileMessageRoute ? 'hidden md:block' : ''}`}>
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6 md:py-4">
         <Link to="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
           <SealMark size={24} />
@@ -216,7 +248,7 @@ export default function Navbar() {
         </Link>
 
         <div className="hidden items-center gap-7 md:flex">
-          {NAV_LINKS.map((l) =>
+          {visibleNavLinks.map((l) =>
             l.anchor ? (
               <a key={l.label} href={l.to} className="font-body text-sm text-muted hover:text-ink">{l.label}</a>
             ) : (
@@ -251,19 +283,29 @@ export default function Navbar() {
               Log in
             </Link>
           )}
-          <Link
-            to="/sell"
-            className="hidden rounded-full bg-marigold px-5 py-2 font-body text-sm font-semibold text-ink transition hover:bg-marigold-deep sm:block"
+          <button
+            type="button"
+            onClick={() => setMobileOpen((open) => !open)}
+            aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileOpen}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-hairline bg-white text-ink md:hidden"
           >
-            Start selling
-          </Link>
+            {mobileOpen ? <X size={19} aria-hidden="true" /> : <Menu size={19} aria-hidden="true" />}
+          </button>
         </div>
       </nav>
 
       {mobileOpen && (
-        <div className="border-t border-hairline bg-surface px-6 py-4 md:hidden">
+        <>
+          <button
+            type="button"
+            aria-label="Dismiss navigation menu"
+            onClick={() => setMobileOpen(false)}
+            className="fixed inset-0 z-40 bg-ink/20 md:hidden"
+          />
+          <div className="absolute inset-x-3 top-[calc(100%+0.5rem)] z-50 max-h-[calc(100dvh-5.5rem)] overflow-y-auto rounded-2xl border border-hairline bg-surface p-4 shadow-[0_20px_60px_rgba(27,31,59,0.2)] md:hidden">
           <div className="flex flex-col gap-1">
-            {NAV_LINKS.map((l) =>
+            {visibleNavLinks.map((l) =>
               l.anchor ? (
                 <a
                   key={l.label} href={l.to} onClick={() => setMobileOpen(false)}
@@ -283,22 +325,7 @@ export default function Navbar() {
 
             <div className="my-2 border-t border-hairline" />
 
-            {session ? (
-              <>
-                <Link to="/messages" onClick={() => setMobileOpen(false)} className="rounded-lg px-2 py-2.5 font-body text-sm text-ink hover:bg-surfacealt">Messages</Link>
-                <Link to="/purchases" onClick={() => setMobileOpen(false)} className="rounded-lg px-2 py-2.5 font-body text-sm text-ink hover:bg-surfacealt">Purchases</Link>
-                <Link to="/refer" onClick={() => setMobileOpen(false)} className="rounded-lg px-2 py-2.5 font-body text-sm text-ink hover:bg-surfacealt">Refer a friend</Link>
-                {profile?.verified_seller && (
-                  <Link to="/marketing" onClick={() => setMobileOpen(false)} className="rounded-lg px-2 py-2.5 font-body text-sm text-ink hover:bg-surfacealt">Marketing</Link>
-                )}
-                <button
-                  onClick={() => { supabase.auth.signOut(); setMobileOpen(false) }}
-                  className="rounded-lg px-2 py-2.5 text-left font-body text-sm text-muted hover:bg-surfacealt"
-                >
-                  Log out
-                </button>
-              </>
-            ) : (
+            {!session && (
               <Link
                 to="/auth" onClick={() => setMobileOpen(false)}
                 className="rounded-lg px-2 py-2.5 font-body text-sm text-ink hover:bg-surfacealt"
@@ -307,14 +334,9 @@ export default function Navbar() {
               </Link>
             )}
 
-            <Link
-              to="/sell" onClick={() => setMobileOpen(false)}
-              className="mt-2 rounded-full bg-marigold px-5 py-2.5 text-center font-body text-sm font-semibold text-ink"
-            >
-              Start selling
-            </Link>
           </div>
-        </div>
+          </div>
+        </>
       )}
 
     </header>

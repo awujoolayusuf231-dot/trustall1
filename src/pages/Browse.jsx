@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Bookmark, BookmarkCheck } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Trash2 } from 'lucide-react'
 import { useProfile } from '../lib/useProfile.js'
 import { supabase } from '../lib/supabaseClient.js'
-import { loadRecentlyViewed, loadSavedListingIds, saveListing, unsaveListing } from '../lib/listingFeatures.js'
+import { clearRecentlyViewed, loadRecentlyViewed, loadSavedListingIds, saveListing, unsaveListing } from '../lib/listingFeatures.js'
 
 const NIGERIAN_STATES = [
   'Abia','Adamawa','Akwa Ibom','Anambra','Bauchi','Bayelsa','Benue','Borno','Cross River',
@@ -84,6 +84,7 @@ export default function Browse() {
   const [page, setPage] = useState(0)
   const [savedIds, setSavedIds] = useState(new Set())
   const [recentlyViewed, setRecentlyViewed] = useState([])
+  const [clearingRecent, setClearingRecent] = useState(false)
   const [categoryOptions, setCategoryOptions] = useState([])
   const [subcategoryOptions, setSubcategoryOptions] = useState([])
   const [tagOptions, setTagOptions] = useState([])
@@ -253,6 +254,20 @@ export default function Browse() {
     setSavedIds(next)
   }
 
+  async function clearRecent() {
+    if (!session?.user?.id || !window.confirm('Clear your recently viewed listings?')) return
+    setClearingRecent(true)
+    try {
+      await clearRecentlyViewed(session.user.id)
+      setRecentlyViewed([])
+    } catch (error) {
+      console.error('Failed to clear recently viewed listings:', error)
+      alert('Could not clear recently viewed listings. Please try again.')
+    } finally {
+      setClearingRecent(false)
+    }
+  }
+
   function updateParam(key, value) {
     const next = new URLSearchParams(params)
     value ? next.set(key, value) : next.delete(key)
@@ -304,7 +319,9 @@ export default function Browse() {
         <section className="mt-10">
           <div className="flex items-center justify-between gap-4">
             <h2 className="font-display text-xl font-bold text-ink">Recently viewed</h2>
-            <Link to="/orders" className="font-mono text-xs text-muted hover:text-seal">Your account</Link>
+            <button type="button" onClick={clearRecent} disabled={clearingRecent} className="inline-flex items-center gap-1.5 font-mono text-xs text-muted hover:text-seal disabled:opacity-50">
+              <Trash2 size={13} aria-hidden="true" />{clearingRecent ? 'Clearing…' : 'Clear history'}
+            </button>
           </div>
           <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
             {recentlyViewed.map((listing) => <ListingCard key={listing.id} listing={listing} saved={savedIds.has(listing.id)} onToggleSave={toggleSave} compact />)}

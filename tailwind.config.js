@@ -17,6 +17,15 @@ export default {
         seal: {
           DEFAULT: '#2F6E51',
           deep: '#1F4D38',
+          light: '#EAF7F0',
+        },
+        mint: {
+          DEFAULT: '#D9F7E7',
+          deep: '#A9E3C1',
+        },
+        blossom: {
+          DEFAULT: '#FFF1D8',
+          deep: '#F9D98B',
         },
         muted: '#6B6558',
       },

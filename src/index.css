@@ -5,12 +5,12 @@
 @layer base {
   html {
     scroll-behavior: smooth;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   body {
     min-height: 100vh;
-    overflow-x: hidden;
+    overflow-x: clip;
     -webkit-font-smoothing: antialiased;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -116,7 +116,40 @@
   }
 
   .hero-overlay {
-    background: linear-gradient(90deg, rgba(250, 248, 242, 0.98) 0%, rgba(250, 248, 242, 0.9) 46%, rgba(250, 248, 242, 0.3) 100%);
+    background: linear-gradient(90deg, rgba(250, 248, 242, 0.97) 0%, rgba(250, 248, 242, 0.9) 42%, rgba(250, 248, 242, 0.2) 100%);
+  }
+
+  .trustall-soft-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(234,247,240,0.92));
+  }
+
+  .trustall-accent-surface {
+    background: linear-gradient(180deg, #fffaf0 0%, #f6fbf8 100%);
+  }
+
+  .seller-panel {
+    border: 1px solid rgba(228, 223, 211, 1);
+    border-radius: 1.75rem;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 16px 40px rgba(27, 31, 59, 0.05);
+  }
+
+  .seller-hero {
+    background:
+      radial-gradient(circle at top left, rgba(255,255,255,0.22), transparent 22%),
+      linear-gradient(135deg, rgba(234,247,240,0.95), rgba(255,255,255,0.95));
+  }
+
+  .seller-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 0.5rem 0.8rem;
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
   }
 
   .animate-rise {

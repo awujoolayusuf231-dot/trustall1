@@ -493,139 +493,159 @@ export default function SellerProfile() {
 
   const salesCount = salesSummary.totalSales || seller.completed_sales_count || 0
   const salesRevenue = Number(salesSummary.totalRevenue || 0)
+  const isOwnStorefront = session?.user?.id === seller.id
 
   return (
-    <section className="mx-auto max-w-4xl px-6 py-16">
-      <div className="flex flex-wrap items-start justify-between gap-6 rounded-2xl border border-hairline bg-white p-8">
-        <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-inksoft font-display text-xl font-bold text-surface">
-            {seller.avatar_url ? (
-              <img src={seller.avatar_url} alt={seller.business_name || 'Profile'} className="h-full w-full object-cover" />
+    <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-14">
+      <div className="seller-hero overflow-hidden rounded-[28px] border border-seal/20 p-5 sm:p-8">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-inksoft font-display text-2xl font-bold text-surface ring-4 ring-white/70">
+              {seller.avatar_url ? (
+                <img src={seller.avatar_url} alt={seller.business_name || 'Profile'} className="h-full w-full object-cover" />
+              ) : (
+                (seller.business_name || '?').slice(0, 2).toUpperCase()
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-display text-2xl font-bold text-ink sm:text-3xl">{seller.business_name}</h1>
+                {seller.verified_seller && <SealMark size={18} />}
+              </div>
+              <p className="font-mono text-xs text-muted">
+                @{seller.handle} · {seller.state}
+                {avgRating > 0 ? ` · ${avgRating.toFixed(1)}★ (${reviews.length} reviews)` : reviews.length > 0 ? ` · ${reviews.length} reviews` : ''}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                {formatMembershipDate(seller.created_at) && <span>{formatMembershipDate(seller.created_at)}</span>}
+                {responseStats?.sample_size > 0 && formatResponseTime(responseStats.avg_response_seconds) && (
+                  <span>{formatResponseTime(responseStats.avg_response_seconds)}</span>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {seller.pro_vendor && (
+                  <span className="rounded-full bg-marigold px-2.5 py-0.5 font-mono text-[10px] font-semibold text-ink">PRO VENDOR</span>
+                )}
+                {seller.seller_level >= 1 && (
+                  <span className="rounded-full bg-seal/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-seal">LEVEL {seller.seller_level}</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 xl:justify-end">
+            <button type="button" onClick={shareProfile} className="rounded-full border border-hairline bg-white/80 px-4 py-2.5 font-body text-sm font-semibold text-ink hover:border-seal hover:text-seal">{shareLabel}</button>
+            {isOwnStorefront ? (
+              <Link to="/sell" className="rounded-full bg-seal px-6 py-2.5 font-body text-sm font-semibold text-surface hover:bg-seal-deep">Edit storefront</Link>
             ) : (
-              (seller.business_name || '?').slice(0, 2).toUpperCase()
+              <button onClick={messageSeller} disabled={starting} className="rounded-full bg-seal px-6 py-2.5 font-body text-sm font-semibold text-surface hover:bg-seal-deep disabled:opacity-50">{starting ? 'Starting…' : 'Message seller'}</button>
             )}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-display text-2xl font-bold text-ink">{seller.business_name}</h1>
-              {seller.verified_seller && <SealMark size={18} />}
-            </div>
-            <p className="font-mono text-xs text-muted">
-              @{seller.handle} · {seller.state}
-              {avgRating > 0 ? ` · ${avgRating.toFixed(1)}★ (${reviews.length} reviews)` : reviews.length > 0 ? ` · ${reviews.length} reviews` : ''}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
-              {formatMembershipDate(seller.created_at) && <span>{formatMembershipDate(seller.created_at)}</span>}
-              {responseStats?.sample_size > 0 && formatResponseTime(responseStats.avg_response_seconds) && (
-                <span>{formatResponseTime(responseStats.avg_response_seconds)}</span>
-              )}
-            </div>
-            <div className="mt-2 flex gap-2">
-              {seller.pro_vendor && (
-                <span className="rounded-full bg-marigold px-2.5 py-0.5 font-mono text-[10px] font-semibold text-ink">PRO VENDOR</span>
-              )}
-              {seller.seller_level >= 1 && (
-                <span className="rounded-full bg-seal/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-seal">LEVEL {seller.seller_level}</span>
-              )}
-            </div>
-          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={shareProfile} className="rounded-full border border-hairline px-4 py-2.5 font-body text-sm font-semibold text-ink hover:border-seal hover:text-seal">{shareLabel}</button>
-          <button onClick={messageSeller} disabled={starting} className="rounded-full bg-seal px-6 py-2.5 font-body text-sm font-semibold text-surface hover:bg-seal-deep disabled:opacity-50">{starting ? 'Starting…' : 'Message seller'}</button>
-        </div>
+
+        {seller.bio && <p className="mt-5 max-w-3xl border-t border-seal/15 pt-4 text-sm leading-relaxed text-muted">{seller.bio}</p>}
+
         {manualShareUrl && (
-          <div className="w-full rounded-xl border border-hairline bg-surfacealt p-3">
+          <div className="mt-4 w-full rounded-2xl border border-hairline bg-white/80 p-3">
             <label className="block text-xs text-muted" htmlFor="manual-profile-link">Copy this profile link</label>
             <input id="manual-profile-link" readOnly value={manualShareUrl} onFocus={(event) => event.target.select()} className="mt-2 w-full rounded-lg border border-hairline bg-white px-3 py-2 text-xs text-ink" />
           </div>
         )}
       </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-seal/20 bg-seal/5 p-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-seal">Sales</p>
-          <p className="mt-2 font-display text-3xl font-bold text-ink">{salesCount}</p>
-          <p className="mt-1 text-xs text-muted">{salesCount === 0 ? 'No completed sales yet' : 'Completed orders'}</p>
+      <div className="mt-6 grid grid-cols-2 divide-x divide-white/20 rounded-2xl bg-seal px-4 py-5 text-white sm:max-w-xl sm:px-6">
+        <div className="pr-4 sm:pr-6">
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/70">Completed orders</p>
+          <p className="mt-2 font-display text-3xl font-bold">{salesCount}</p>
+          <p className="mt-1 text-xs text-white/70">{salesCount === 0 ? 'No completed sales yet' : 'Buyer-confirmed'}</p>
         </div>
-        <div className="rounded-2xl border border-ink/10 bg-white p-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted">Total sales</p>
-          <p className="mt-2 font-display text-3xl font-bold text-ink">
-            ₦{salesRevenue.toLocaleString()}
-          </p>
-          <p className="mt-1 text-xs text-muted">{salesRevenue === 0 ? 'No sales recorded yet' : 'Gross confirmed sales'}</p>
+        <div className="pl-4 sm:pl-6">
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/70">Sales volume</p>
+          <p className="mt-2 font-display text-3xl font-bold text-marigold-soft">₦{salesRevenue.toLocaleString()}</p>
+          <p className="mt-1 text-xs text-white/70">Confirmed sales</p>
         </div>
       </div>
 
-      {seller.bio && <p className="mt-6 text-sm leading-relaxed text-muted">{seller.bio}</p>}
-
-      <h2 className="mt-10 font-display text-lg text-ink">Listings</h2>
+      <div className="mt-12">
+        <div className="flex items-end justify-between gap-3 border-b border-hairline pb-4">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Shop the collection</p>
+            <h2 className="mt-1 font-display text-2xl font-bold text-ink">Available now</h2>
+          </div>
+          <span className="font-mono text-xs text-muted">{listings.length} {listings.length === 1 ? 'item' : 'items'}</span>
+        </div>
       {listings.length === 0 ? (
         <p className="mt-3 text-sm text-muted">No active listings yet.</p>
       ) : (
-        <div className="listing-grid mt-5 gap-5">
+        <div className="listing-grid mt-5 gap-4 sm:gap-6">
           {listings.map((l) => (
-            <Link key={l.id} to={`/listing/${l.slug}`} className="listing-card rounded-2xl border border-hairline bg-white p-3 transition hover:-translate-y-0.5 hover:border-seal hover:shadow-md md:p-4">
-              <div className="listing-card-image mb-3 aspect-square overflow-hidden rounded-xl bg-surfacealt">
+            <Link key={l.id} to={`/listing/${l.slug}`} className="listing-card group transition">
+              <div className="listing-card-image mb-3 aspect-[4/5] overflow-hidden rounded-2xl bg-surfacealt">
                 {listingImageUrl(firstListingImage(l.images)) && <img src={listingImageUrl(firstListingImage(l.images))} alt={l.title} className="h-full w-full object-cover" />}
               </div>
               <p className="truncate font-mono text-[10px] uppercase tracking-widest text-seal">{l.categoryName}</p>
-              <p className="listing-card-title font-body text-xs text-ink md:text-sm">{l.title}</p>
-              <p className="mt-1 truncate font-mono text-[10px] text-muted md:text-xs">{l.product_type === 'digital_service' ? 'From ' : ''}₦{Number(l.product_type === 'digital_service' ? (l.basicPackagePrice ?? l.price) : l.price || 0).toLocaleString()}</p>
+              <p className="listing-card-title mt-1 font-body text-sm font-semibold text-ink group-hover:text-seal">{l.title}</p>
+              <p className="mt-2 font-mono text-xs text-muted">{l.product_type === 'digital_service' ? 'From ' : ''}₦{Number(l.product_type === 'digital_service' ? (l.basicPackagePrice ?? l.price) : l.price || 0).toLocaleString()}</p>
             </Link>
           ))}
         </div>
       )}
+      </div>
 
-      <h2 className="mt-12 mb-1 font-display text-xl font-bold text-ink">Buyer reviews</h2>
-      <p className="font-mono text-xs text-muted mb-6">
-        {reviews.length === 0 ? 'No reviews yet' : `${reviews.length} review${reviews.length === 1 ? '' : 's'} from buyers`}
-      </p>
-
-      {reviews.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-hairline bg-surfacealt/50 p-8 text-center">
-          <p className="text-sm text-muted">This seller doesn't have any reviews yet. They'll appear here as buyers submit them.</p>
+      <div className="mt-14">
+        <div className="border-b border-hairline pb-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Community notes</p>
+          <h2 className="mt-1 font-display text-2xl font-bold text-ink">Buyer reviews</h2>
         </div>
-      ) : (
-        <div className="mt-5 space-y-4">
-          {reviews.map((review) => (
-            <article key={review.id} className="group rounded-2xl border border-hairline bg-white p-5 sm:p-6 shadow-xs hover:shadow-sm hover:border-seal/50 transition-all duration-200">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <Link to={`/buyer/${review.reviewer?.handle || review.reviewer?.id}`} className="flex items-start gap-4 flex-1 min-w-0">
-                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-seal/20 to-seal/10 border border-seal/20 font-display text-sm font-bold text-seal transition group-hover:from-seal/30 group-hover:to-seal/20">
-                    {review.reviewer?.avatar_url ? (
-                      <img src={review.reviewer.avatar_url} alt={review.reviewer?.full_name || 'Buyer'} className="h-full w-full object-cover" />
-                    ) : (
-                      (review.reviewer?.business_name || review.reviewer?.full_name || '?').slice(0, 2).toUpperCase()
-                    )}
+        <p className="font-mono text-xs text-muted mb-6">
+          {reviews.length === 0 ? 'No reviews yet' : `${reviews.length} review${reviews.length === 1 ? '' : 's'} from buyers`}
+        </p>
+
+        {reviews.length === 0 ? (
+          <div className="border-b border-hairline py-8 text-center">
+            <p className="text-sm text-muted">This seller doesn't have any reviews yet. They'll appear here as buyers submit them.</p>
+          </div>
+        ) : (
+          <div className="mt-2 divide-y divide-hairline">
+            {reviews.map((review) => (
+              <article key={review.id} className="group py-5">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                  <Link to={`/buyer/${review.reviewer?.handle || review.reviewer?.id}`} className="flex items-start gap-4 flex-1 min-w-0">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-seal/20 to-seal/10 border border-seal/20 font-display text-sm font-bold text-seal transition group-hover:from-seal/30 group-hover:to-seal/20">
+                      {review.reviewer?.avatar_url ? (
+                        <img src={review.reviewer.avatar_url} alt={review.reviewer?.full_name || 'Buyer'} className="h-full w-full object-cover" />
+                      ) : (
+                        (review.reviewer?.business_name || review.reviewer?.full_name || '?').slice(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-display text-sm sm:text-base font-bold text-ink group-hover:text-seal transition">
+                        {review.reviewer?.business_name || review.reviewer?.full_name || 'A buyer'}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-muted">
+                        @{review.reviewer?.handle}
+                      </p>
+                      <p className="mt-1 font-mono text-[10px] text-muted">
+                        {new Date(review.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </p>
+                    </div>
+                  </Link>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <ReviewStars value={review.rating} />
+                    <span className="ml-2 font-display text-sm font-bold text-ink">{review.rating}/5</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-display text-sm sm:text-base font-bold text-ink group-hover:text-seal transition">
-                      {review.reviewer?.business_name || review.reviewer?.full_name || 'A buyer'}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-muted">
-                      @{review.reviewer?.handle}
-                    </p>
-                    <p className="mt-1 font-mono text-[10px] text-muted">
-                      {new Date(review.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                    </p>
-                  </div>
-                </Link>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <ReviewStars value={review.rating} />
-                  <span className="ml-2 font-display text-sm font-bold text-ink">{review.rating}/5</span>
                 </div>
-              </div>
-              
-              {review.comment && (
-                <p className="mt-4 text-sm leading-relaxed text-muted italic border-l-2 border-seal/30 pl-4">
-                  "{review.comment}"
-                </p>
-              )}
-            </article>
-          ))}
-        </div>
-      )}
+
+                {review.comment && (
+                  <p className="mt-4 text-sm leading-relaxed text-muted italic border-l-2 border-seal/30 pl-4">
+                    "{review.comment}"
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   )
 }

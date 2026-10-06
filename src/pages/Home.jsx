@@ -1,267 +1,163 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowRight, BriefcaseBusiness, Check, ChevronRight, Heart, House, Laptop, Search, ShieldCheck, Shirt, Smartphone, Sparkles, Users, Wrench } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient.js'
 import { SealMark } from '../components/Navbar.jsx'
 
 const categories = [
-  'Phones & Gadgets', 'Fashion', 'Home & Living', 'Services', 'Vehicles', 'Electronics',
+  { label: 'Phones & Gadgets', icon: Smartphone },
+  { label: 'Electronics', icon: Laptop },
+  { label: 'Fashion & Style', icon: Shirt },
+  { label: 'Home & Living', icon: House },
+  { label: 'Services', icon: Wrench },
+  { label: 'Beauty & Personal Care', icon: Heart },
+  { label: 'Freelance Gigs', icon: BriefcaseBusiness },
 ]
 
-const steps = [
-  {
-    n: '01',
-    title: 'Chat before you commit',
-    body: 'Message any seller directly from their listing — ask questions, negotiate, share photos, before any money moves.',
-  },
-  {
-    n: '02',
-    title: 'Get a clear offer',
-    body: 'The seller sends a custom offer card right in the chat — item, price, delivery fee, nothing hidden or assumed.',
-  },
-  {
-    n: '03',
-    title: 'Pay, and confirm when it arrives',
-    body: "Accept & pay securely. The seller's payout releases once you confirm you received it — or automatically after 3 hours. You still have 2 days to raise a dispute if something's wrong.",
-  },
-]
+function imageUrl(value) {
+  if (!value) return ''
+  const image = Array.isArray(value) ? value[0] : typeof value === 'string' ? (() => {
+    try { return JSON.parse(value)[0] || value } catch { return value }
+  })() : ''
+  if (!image) return ''
+  return /^https?:\/\//i.test(image) ? image : supabase.storage.from('listing-images').getPublicUrl(image).data.publicUrl
+}
+
+function ListingTile({ listing, badge }) {
+  const image = imageUrl(listing.images)
+  const price = listing.product_type === 'digital_service' ? listing.basicPrice ?? listing.price : listing.price
+  return (
+    <Link to={`/listing/${listing.slug}`} className="group block min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:border-emerald-700/40 hover:shadow-lg">
+      <div className="relative aspect-[1.22] overflow-hidden bg-slate-100">
+        {image ? <img src={image} alt={listing.title} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : <div className="flex h-full items-center justify-center text-slate-300"><BriefcaseBusiness size={34} /></div>}
+        {badge && <span className="absolute left-2 top-2 rounded bg-marigold-500 px-2 py-1 font-mono text-[9px] font-bold uppercase text-emerald-950">{badge}</span>}
+      </div>
+      <div className="p-2.5">
+        <p className="truncate text-[11px] font-semibold text-slate-800">{listing.title}</p>
+        <p className="mt-1 truncate text-xs font-bold text-emerald-800">{listing.product_type === 'digital_service' ? 'From ' : ''}₦{Number(price || 0).toLocaleString()}</p>
+        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-500"><ShieldCheck size={11} className="text-emerald-700" />{listing.seller?.business_name || listing.category || 'Trustall seller'}</div>
+      </div>
+    </Link>
+  )
+}
+
+function ProductSection({ title, subtitle, listings, badge, to = '/browse', icon: Icon }) {
+  if (!listings.length) return null
+  return (
+    <section className="mx-auto max-w-6xl px-4 py-7 sm:px-6">
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <Icon size={21} className="mt-0.5 shrink-0 text-emerald-700" />
+          <div><h2 className="font-display text-lg font-bold text-slate-900">{title}</h2><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div>
+        </div>
+        <Link to={to} className="flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-800 hover:text-emerald-950">View all <ChevronRight size={15} /></Link>
+      </div>
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+        {listings.slice(0, 5).map((listing) => <ListingTile key={listing.id} listing={listing} badge={badge} />)}
+      </div>
+    </section>
+  )
+}
 
 export default function Home() {
-  const [featuredSellers, setFeaturedSellers] = useState([])
+  const [listings, setListings] = useState([])
+  const [sellers, setSellers] = useState([])
+  const [search, setSearch] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
-    async function loadFeaturedSellers() {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, business_name, avatar_url, handle, verified_seller, seller_level, total_sales_volume, completed_sales_count, avg_rating, state')
-        .not('business_name', 'is', null)
-        .order('total_sales_volume', { ascending: false })
-        .limit(4)
-      setFeaturedSellers(data || [])
+    let active = true
+    async function loadMarketplace() {
+      const [{ data: rows }, { data: profiles }, { data: packages }] = await Promise.all([
+        supabase.from('listings').select('id, slug, title, category, product_type, images, price, created_at, seller_id').eq('is_active', true).order('created_at', { ascending: false }).limit(40),
+        supabase.from('profiles').select('id, business_name, full_name, handle, avatar_url, verified_seller, state, avg_rating, completed_sales_count').eq('is_seller', true).order('completed_sales_count', { ascending: false }).limit(8),
+        supabase.from('service_packages').select('listing_id, tier, price').eq('tier', 'basic'),
+      ])
+      if (!active) return
+      const sellerIds = [...new Set((rows || []).map((row) => row.seller_id).filter(Boolean))]
+      const { data: listingSellers } = sellerIds.length
+        ? await supabase.from('profiles').select('id, business_name, verified_seller').in('id', sellerIds)
+        : { data: [] }
+      if (!active) return
+      const sellerById = new Map((listingSellers || []).map((seller) => [seller.id, seller]))
+      const priceByListing = new Map((packages || []).map((row) => [row.listing_id, row.price]))
+      setListings((rows || []).map((row) => ({ ...row, seller: sellerById.get(row.seller_id), basicPrice: priceByListing.get(row.id) })))
+      setSellers(profiles || [])
     }
-    loadFeaturedSellers()
+    loadMarketplace()
+    return () => { active = false }
   }, [])
 
+  const products = listings.filter((listing) => listing.product_type !== 'digital_service')
+  const services = listings.filter((listing) => listing.product_type === 'digital_service')
+  const submitSearch = (event) => {
+    event.preventDefault()
+    const value = search.trim()
+    navigate(value ? `/browse?q=${encodeURIComponent(value)}` : '/browse')
+  }
+
   return (
-    <div>
-      <section className="hero relative overflow-hidden border-b border-hairline">
-        <div className="hero-overlay absolute inset-0" />
-        <div className="relative mx-auto grid max-w-6xl gap-12 px-6 py-20 md:grid-cols-2 md:py-28">
-          <div className="animate-rise flex flex-col justify-center">
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-seal">
-              Verified sellers only
-            </p>
-            <h1 className="mt-5 font-display text-4xl font-bold leading-[1.08] text-ink md:text-5xl">
-              Buy and sell with people you can actually trust.
-            </h1>
-            <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
-              Chat with sellers, agree on a price, and pay safely — every offer is clear,
-              every verified seller stands behind a badge, and your money is protected
-              by a real escrow fee, not just a promise.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-4">
-              <Link to="/browse" className="rounded-full bg-marigold px-7 py-3 font-body text-sm font-semibold text-ink transition hover:bg-marigold-deep">
-                Browse listings
-              </Link>
-              <Link to="/sellers" className="rounded-full border border-ink px-7 py-3 font-body text-sm font-medium text-ink transition hover:border-seal hover:text-seal">
-                See all sellers
-              </Link>
-            </div>
+    <div className="bg-white pb-6">
+      <section className="relative isolate overflow-hidden bg-gradient-to-r from-emerald-50 via-white to-blossom/80">
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(236,253,245,.98)_0%,rgba(255,255,255,.94)_46%,rgba(255,241,216,.32)_78%),url('https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1800&q=85')] bg-cover bg-[center_42%]" />
+        <div className="mx-auto grid min-h-[330px] max-w-6xl items-center gap-8 px-5 py-10 sm:px-6 sm:py-14 md:min-h-[370px] md:grid-cols-[1.05fr_.95fr]">
+          <div className="max-w-xl">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-800">Buy <span className="px-1 text-marigold-500">·</span> Sell <span className="px-1 text-marigold-500">·</span> Find services</p>
+            <h1 className="mt-3 font-display text-4xl font-extrabold leading-[1.02] text-slate-950 sm:text-5xl">Everything you need,<br /><span className="text-emerald-700">in one trusted place.</span></h1>
+            <p className="mt-3 max-w-lg text-sm leading-relaxed text-slate-700">Discover quality products, skilled service providers and trusted sellers, all on Trustall.</p>
+            <form onSubmit={submitSearch} className="mt-5 flex max-w-[560px] overflow-hidden rounded-lg border border-emerald-700/20 bg-white shadow-sm focus-within:ring-2 focus-within:ring-emerald-600/30">
+              <label className="flex min-w-0 flex-1 items-center gap-2 px-3"><Search size={16} className="shrink-0 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products, services, or sellers..." className="min-w-0 flex-1 border-0 bg-transparent py-3 text-xs text-slate-900 outline-none placeholder:text-slate-400" /></label>
+              <button aria-label="Search" className="flex w-12 shrink-0 items-center justify-center bg-emerald-700 text-white transition hover:bg-emerald-800"><Search size={17} /></button>
+            </form>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-slate-600"><span className="font-semibold">Popular:</span>{['iPhone', 'Laptop', 'Fashion', 'Web Design', 'Home Services'].map((term) => <button key={term} type="button" onClick={() => navigate(`/browse?q=${encodeURIComponent(term)}`)} className="rounded-full border border-emerald-100 bg-white/80 px-2.5 py-1 transition hover:border-marigold-300 hover:text-emerald-800">{term}</button>)}</div>
           </div>
-
-          <div className="animate-float flex items-center justify-center">
-            <div className="w-full max-w-sm rounded-3xl border border-hairline bg-white/95 p-5 shadow-[0_20px_60px_-15px_rgba(27,31,59,0.25)] backdrop-blur-sm">
-              <div className="flex items-center gap-2 border-b border-hairline pb-4">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-inksoft font-display text-sm font-bold text-surface">
-                  TA
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-body text-sm font-semibold text-ink">Tunde's Gadgets</p>
-                    <SealMark size={15} />
-                  </div>
-                  <p className="font-mono text-[11px] text-muted">Verified seller</p>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-surfacealt px-4 py-2.5">
-                  <p className="text-sm text-ink">Is the iPhone 13 still available?</p>
-                </div>
-                <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-inksoft px-4 py-2.5">
-                  <p className="text-sm text-surface">Yes! Clean condition, sending you an offer now 👇</p>
-                </div>
-
-                <div className="rounded-2xl border border-marigold/40 bg-marigold/10 p-4">
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-marigold-deep">Offer</p>
-                  <p className="mt-1 font-display text-base font-semibold text-ink">iPhone 13, 128GB</p>
-                  <div className="mt-2 flex items-baseline justify-between">
-                    <span className="font-mono text-xl font-semibold text-ink">₦380,000</span>
-                    <span className="font-mono text-xs text-muted">+ ₦2,000 delivery</span>
-                  </div>
-                  <button className="mt-3 w-full rounded-full bg-seal py-2.5 font-body text-sm font-semibold text-surface transition hover:bg-seal-deep">
-                    Accept & Pay
-                  </button>
-                </div>
-              </div>
+          <div className="hidden justify-end md:flex">
+            <div className="max-w-[190px] rounded-xl border border-marigold-200 bg-white/90 p-4 shadow-lg shadow-emerald-900/5 backdrop-blur-sm">
+              <div className="flex items-center gap-2"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-marigold-100 text-marigold-700"><ShieldCheck size={22} /></span><div><p className="text-xs font-bold text-slate-900">Buyer protection</p><p className="mt-0.5 text-[10px] leading-snug text-slate-600">Your transactions are safe with Trustall.</p></div></div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="border-b border-hairline bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-4 px-6 py-6 text-center">
-          {[
-            'ID-verified sellers',
-            'Secured by Paystack',
-            'Escrow-protected payments',
-            'Buyer confirmation before payout',
-          ].map((t) => (
-            <div key={t} className="flex items-center gap-2 font-mono text-xs text-muted">
-              <span className="h-1.5 w-1.5 rounded-full bg-seal" />
-              {t}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-20">
-        <p className="font-mono text-xs uppercase tracking-widest text-seal">How it works</p>
-        <h2 className="mt-3 font-display text-3xl font-bold text-ink">Three steps, nothing hidden.</h2>
-        <div className="mt-12 grid gap-8 md:grid-cols-3">
-          {steps.map((s) => (
-            <div key={s.n}>
-              <span className="font-mono text-sm text-marigold-deep">{s.n}</span>
-              <h3 className="mt-3 font-display text-lg font-semibold text-ink">{s.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{s.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="trust" className="border-y border-hairline bg-ink text-surface">
-        <div className="mx-auto max-w-6xl px-6 py-20">
-          <div className="grid gap-10 md:grid-cols-3">
-            <div>
-              <SealMark size={44} />
-              <h2 className="mt-4 font-display text-2xl font-bold">What the seal actually means.</h2>
-            </div>
-            <p className="md:col-span-2 text-base leading-relaxed text-surface/70">
-              A verified badge isn't decoration — it means the seller has submitted a real ID
-              (NIN or CAC), a confirmed phone number, and their details have been personally
-              reviewed and approved, not auto-generated. Verification is completely free and
-              typically takes up to 3 business days.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-widest text-seal">Protection</p>
-            <Link to="/trust-safety" className="mt-2 inline-block font-display text-3xl font-bold text-ink hover:text-seal">The Trustall Guarantee</Link>
-          </div>
-        </div>
-        <div className="grid gap-6 md:grid-cols-3">
-          <div className="rounded-3xl border border-hairline bg-white p-6 shadow-sm">
-            <div className="mb-4 text-2xl">🛡️</div>
-            <h3 className="font-display text-xl font-bold text-ink">100% Escrow Protected</h3>
-            <p className="mt-3 text-sm leading-relaxed text-muted">Your money is held safely in our Paystack vault. We never pay the seller until you confirm you received exactly what you ordered.</p>
-          </div>
-          <div className="rounded-3xl border border-hairline bg-white p-6 shadow-sm">
-            <div className="mb-4 text-2xl">⏱️</div>
-            <h3 className="font-display text-xl font-bold text-ink">24-Hour Inspection</h3>
-            <p className="mt-3 text-sm leading-relaxed text-muted">No more 'What I ordered vs. What I got.' You have a full 24 hours to inspect your item before funds are released.</p>
-          </div>
-          <div className="rounded-3xl border border-hairline bg-white p-6 shadow-sm">
-            <div className="mb-4 text-2xl">⚖️</div>
-            <h3 className="font-display text-xl font-bold text-ink">Fair In-App Disputes</h3>
-            <p className="mt-3 text-sm leading-relaxed text-muted">Issues? Don't argue on WhatsApp. Our unbiased admins step in to review the chat and unboxing videos to ensure fair refunds.</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-widest text-seal">Featured sellers</p>
-            <h2 className="mt-3 font-display text-3xl font-bold text-ink">Trusted sellers buyers keep returning to.</h2>
-          </div>
-          <Link to="/browse" className="hidden font-mono text-xs text-muted hover:text-seal md:inline-block">Browse all →</Link>
-        </div>
-
-        <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {featuredSellers.map((seller) => (
-            <Link
-              key={seller.id}
-              to={`/seller/${seller.handle}`}
-              className="group rounded-3xl border border-hairline bg-gradient-to-br from-white via-white to-surfacealt p-4 shadow-[0_20px_45px_-28px_rgba(27,31,59,0.45)] transition hover:-translate-y-1 hover:border-seal hover:shadow-[0_24px_48px_-22px_rgba(27,31,59,0.55)]"
-            >
-              <div className="flex items-center gap-3 border-b border-hairline pb-3">
-                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-inksoft font-display text-sm font-bold text-surface ring-2 ring-white shadow-sm">
-                  {seller.avatar_url ? (
-                    <img src={seller.avatar_url} alt={seller.business_name || 'Seller'} className="h-full w-full object-cover" />
-                  ) : (
-                    (seller.business_name || '?').slice(0, 2).toUpperCase()
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="truncate font-body text-sm font-semibold text-ink">{seller.business_name}</p>
-                    {seller.verified_seller && <SealMark size={14} />}
-                  </div>
-                  <p className="font-mono text-[10px] text-muted">{seller.state}</p>
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between">
-                <span className="rounded-full bg-marigold/10 px-2 py-1 font-mono text-[10px] font-semibold text-marigold-deep">
-                  {seller.avg_rating ? `${Number(seller.avg_rating).toFixed(1)}★` : 'New seller'}
-                </span>
-                <span className="font-mono text-[10px] text-muted">{seller.handle ? `@${seller.handle}` : 'Verified'}</span>
-              </div>
-
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-2xl bg-white/80 p-2.5">
-                  <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted">Sales</p>
-                  <p className="mt-1 font-display text-lg font-bold text-ink">{Number(seller.completed_sales_count || 0)}</p>
-                </div>
-                <div className="rounded-2xl bg-white/80 p-2.5">
-                  <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted">Total</p>
-                  <p className="mt-1 font-display text-lg font-bold text-ink">₦{Number(seller.total_sales_volume || 0).toLocaleString()}</p>
-                </div>
-              </div>
+      <section className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-7">
+          {categories.map(({ label, icon: Icon }) => (
+            <Link key={label} to={`/browse?category=${encodeURIComponent(label)}`} className="group flex min-h-[76px] flex-col items-center justify-center gap-2 rounded-lg border border-slate-100 bg-white px-1 py-3 text-center transition hover:border-emerald-200 hover:bg-emerald-50/60">
+              <Icon size={19} className="text-emerald-700 transition group-hover:scale-110" /><span className="text-[9px] font-semibold leading-tight text-slate-600 sm:text-[10px]">{label}</span>
             </Link>
           ))}
         </div>
       </section>
 
-      <section id="categories" className="mx-auto max-w-6xl px-6 py-20">
-        <p className="font-mono text-xs uppercase tracking-widest text-seal">Browse</p>
-        <h2 className="mt-3 font-display text-3xl font-bold text-ink">Find what you need.</h2>
-        <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-6">
-          {categories.map((c) => (
-            <Link
-              to={`/browse?category=${encodeURIComponent(c)}`}
-              key={c}
-              className="rounded-2xl border border-hairline bg-white p-5 text-center transition hover:border-seal"
-            >
-              <p className="font-body text-sm font-medium text-ink">{c}</p>
-            </Link>
-          ))}
+      <ProductSection title="Featured on Trustall" subtitle="Top picks handpicked for you. Quality products and trusted sellers." listings={products.slice(0, 5)} badge="Featured" icon={Sparkles} />
+      <ProductSection title="Recommended for you" subtitle="Based on popular products and trusted sellers." listings={products.slice(5, 10).length ? products.slice(5, 10) : products.slice(0, 5)} badge="Popular" icon={Heart} />
+
+      <section className="mx-auto max-w-6xl px-4 py-7 sm:px-6">
+        <div className="grid gap-8 lg:grid-cols-2">
+          <div>
+            <div className="mb-4 flex items-end justify-between"><div><h2 className="font-display text-lg font-bold text-slate-900">Popular products</h2><p className="text-xs text-slate-500">Trending finds loved by the Trustall community.</p></div><Link to="/browse" className="flex items-center text-xs font-semibold text-emerald-800">View all <ChevronRight size={15} /></Link></div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{products.slice(10, 14).map((listing) => <ListingTile key={listing.id} listing={listing} />)}</div>
+          </div>
+          <div className="border-t border-slate-200 pt-6 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
+            <div className="mb-4 flex items-end justify-between"><div><h2 className="font-display text-lg font-bold text-slate-900">Featured services</h2><p className="text-xs text-slate-500">Skilled professionals ready to help you.</p></div><Link to="/browse?category=Services" className="flex items-center text-xs font-semibold text-emerald-800">View all <ChevronRight size={15} /></Link></div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{services.slice(0, 4).map((listing) => <ListingTile key={listing.id} listing={listing} badge="Service" />)}</div>
+          </div>
         </div>
       </section>
 
-      <section className="px-6 py-24 text-center">
-        <h2 className="font-display text-3xl font-bold text-ink md:text-4xl">
-          Ready to sell something?
-        </h2>
-        <p className="mx-auto mt-4 max-w-md text-muted">
-          List your first item, get verified for free, and start chatting with real buyers today.
-        </p>
-        <Link to="/sell" className="mt-8 inline-block rounded-full bg-marigold px-8 py-3 font-body text-sm font-semibold text-ink transition hover:bg-marigold-deep">
-          Start selling
-        </Link>
+      <section className="mx-auto max-w-6xl px-4 py-7 sm:px-6">
+        <div className="mb-4 flex items-end justify-between"><div className="flex items-start gap-2.5"><Users size={21} className="mt-0.5 text-emerald-700" /><div><h2 className="font-display text-lg font-bold text-slate-900">Sellers to discover</h2><p className="text-xs text-slate-500">Amazing sellers. Great products. Real people.</p></div></div><Link to="/sellers" className="flex items-center text-xs font-semibold text-emerald-800">View all <ChevronRight size={15} /></Link></div>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
+          {sellers.slice(0, 5).map((seller) => <Link key={seller.id} to={`/seller/${seller.handle || seller.id}`} className="flex min-w-0 items-center gap-2.5 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-emerald-700/40 hover:shadow-sm"><span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-emerald-50 text-xs font-bold text-emerald-800">{seller.avatar_url ? <img src={seller.avatar_url} alt="" className="h-full w-full object-cover" /> : (seller.business_name || seller.full_name || '?').slice(0, 2).toUpperCase()}</span><span className="min-w-0"><span className="flex items-center gap-1 truncate text-[11px] font-bold text-slate-900">{seller.business_name || seller.full_name || 'Trustall seller'}{seller.verified_seller && <SealMark size={12} />}</span><span className="mt-1 block truncate text-[10px] text-slate-500">{seller.state || 'Nigeria'} · {seller.avg_rating ? `${Number(seller.avg_rating).toFixed(1)} rating` : 'New seller'}</span></span></Link>)}
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-6xl gap-3 px-4 py-5 sm:px-6 md:grid-cols-[1fr_190px]">
+        <div className="flex min-h-28 items-center justify-between gap-5 overflow-hidden rounded-lg bg-gradient-to-r from-emerald-900 via-emerald-800 to-emerald-700 px-5 py-5 text-white sm:px-8">
+          <div><p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-marigold-200">Grow your business</p><h2 className="mt-1 font-display text-xl font-bold">Get more visibility with Trustall</h2><p className="mt-1 text-xs text-white/70">Showcase your products and services to more people.</p><Link to="/marketing" className="mt-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[10px] font-bold text-emerald-950">Learn more <ArrowRight size={12} /></Link></div>
+          <div className="hidden h-20 w-20 shrink-0 items-center justify-center rounded-full border border-marigold-300/50 bg-emerald-800 sm:flex"><Check size={34} className="text-marigold-200" /></div>
+        </div>
+        <Link to="/sell" className="flex items-center justify-between gap-3 rounded-lg bg-gradient-to-br from-marigold-500 to-marigold-400 p-5 text-emerald-950 transition hover:brightness-105"><span><span className="block text-xs font-bold">For sellers</span><span className="mt-1 block text-[10px] leading-relaxed text-emerald-950/80">Grow your business with targeted exposure on Trustall.</span><span className="mt-3 inline-block rounded-full bg-white px-3 py-1.5 text-[10px] font-bold text-emerald-800">Promote now</span></span><ArrowRight size={18} /></Link>
       </section>
     </div>
   )

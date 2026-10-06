@@ -1,5 +1,7 @@
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect } from 'react'
+import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import Navbar, { MobileBottomNav } from './components/Navbar.jsx'
 import Footer from './components/Footer.jsx'
 import TrustallChat from './components/TrustallChat.jsx'
@@ -27,7 +29,8 @@ const BuyerProfile = lazy(() => import('./pages/SellerProfile.jsx').then((module
 const Messages = lazy(() => import('./pages/Messages.jsx'))
 const Marketing = lazy(() => import('./pages/Marketing.jsx'))
 const Refer = lazy(() => import('./pages/Refer.jsx'))
-const Purchases = lazy(() => import('./pages/Purchases.jsx'))
+const Account = lazy(() => import('./pages/Account.jsx'))
+const HowItWorks = lazy(() => import('./pages/HowItWorks.jsx'))
 const SavedListings = lazy(() => import('./pages/SavedListings.jsx'))
 const Orders = lazy(() => import('./pages/Orders.jsx').then((module) => ({ default: module.default })))
 const OrderDetails = lazy(() => import('./pages/Orders.jsx').then((module) => ({ default: module.OrderDetails })))
@@ -131,7 +134,8 @@ export default function App() {
                 <Route path="/messages/:conversationId" element={<Messages />} />
                 <Route path="/marketing" element={<Marketing />} />
                 <Route path="/refer" element={<Refer />} />
-                <Route path="/purchases" element={<Purchases />} />
+                <Route path="/account" element={<Account />} />
+                <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/saved" element={<SavedListings />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/orders/:orderId" element={<OrderDetails />} />
@@ -148,6 +152,8 @@ export default function App() {
           <MobileBottomNav />
           <Footer />
           <TrustallChat />
+          <Analytics />
+          <SpeedInsights />
         </div>
       </ErrorBoundary>
     </RoleProvider>

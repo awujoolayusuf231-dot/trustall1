@@ -104,7 +104,7 @@ Added `avatar_url` and `verified_seller` fields to fetch when loading the conver
 async function loadThread() {
   const { data: convo } = await supabase
     .from('conversations')
-    .select('*, buyer:buyer_id(id, business_name, full_name, avatar_url, verified_seller), seller:seller_id(id, business_name, full_name, avatar_url, verified_seller, paystack_subaccount_code)')
+    .select('*, buyer:buyer_id(id, business_name, full_name, avatar_url, verified_seller), seller:seller_id(id, business_name, full_name, avatar_url, verified_seller, paystack_recipient_code)')
     .eq('id', conversationId).single()
   setConversation(convo)
   ...

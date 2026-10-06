@@ -8,6 +8,7 @@ import { isOnline, formatLastSeen, subscribeToUserPresence } from '../lib/presen
 import { ensureNotificationPermission, sendBrowserNotification } from '../lib/notifications.js'
 import { markConversationNotificationsRead } from '../lib/notificationUtils.js'
 import { getSupportEmail } from '../lib/authRedirect.js'
+import { Paperclip, Send } from 'lucide-react'
 
 export default function Messages() {
   const { conversationId } = useParams()
@@ -17,7 +18,7 @@ export default function Messages() {
   const [isMobileView, setIsMobileView] = useState(() => (
     typeof window !== 'undefined' && window.innerWidth < 768
   ))
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [mobileViewport, setMobileViewport] = useState({ height: 0, top: 0 })
 
   // Detect mobile view on mount and on window resize
   useEffect(() => {
@@ -32,19 +33,18 @@ export default function Messages() {
 
   useEffect(() => {
     if (!isMobileView || !conversationId) {
-      setKeyboardOffset(0)
+      setMobileViewport({ height: 0, top: 0 })
       return
     }
 
     const updateKeyboardOffset = () => {
       const viewport = window.visualViewport
       if (!viewport) {
-        setKeyboardOffset(0)
+        setMobileViewport({ height: window.innerHeight, top: 0 })
         return
       }
 
-      const nextOffset = Math.max(0, window.innerHeight - viewport.height)
-      setKeyboardOffset(nextOffset)
+      setMobileViewport({ height: viewport.height, top: viewport.offsetTop })
     }
 
     updateKeyboardOffset()
@@ -73,8 +73,11 @@ export default function Messages() {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    const previousHeight = document.body.style.height
+    document.body.style.height = '100dvh'
     return () => {
       document.body.style.overflow = previousOverflow
+      document.body.style.height = previousHeight
     }
   }, [])
 
@@ -84,8 +87,12 @@ export default function Messages() {
 
   return (
     <section className={showChatFullscreen
-      ? "mx-auto flex h-[calc(100dvh-10rem)] min-h-0 w-full max-w-6xl flex-col overflow-hidden px-0 py-0 sm:h-[calc(100dvh-5rem)] sm:px-6 sm:py-10"
-      : "mx-auto flex h-[calc(100dvh-10rem)] min-h-0 w-full max-w-6xl flex-col overflow-hidden px-6 py-10 sm:h-[calc(100dvh-5rem)]"}>
+      ? "fixed inset-x-0 z-40 mx-auto flex min-h-0 w-full max-w-6xl flex-col overflow-hidden bg-white px-0 py-0"
+      : "mx-auto flex h-[calc(100dvh-10rem)] min-h-0 w-full max-w-6xl flex-col overflow-hidden px-6 py-10 sm:h-[calc(100dvh-5rem)]"}
+      style={showChatFullscreen ? {
+        top: `${mobileViewport.top}px`,
+        height: mobileViewport.height ? `${mobileViewport.height}px` : '100dvh',
+      } : undefined}>
       {/* Desktop & Mobile Header */}
       {!showChatFullscreen && (
         <>
@@ -94,7 +101,7 @@ export default function Messages() {
         </>
       )}
 
-      <div className={showChatFullscreen ? "flex h-full min-h-0 flex-1 flex-col" : "mt-6 grid min-h-0 flex-1 gap-4 md:grid-cols-[280px_1fr]"} >
+      <div className={showChatFullscreen ? "mobile-chat-fullscreen flex h-full min-h-0 flex-1 flex-col" : "mt-6 grid min-h-0 flex-1 gap-4 md:grid-cols-[280px_1fr]"} >
         {/* On mobile, show conversation list only if no conversation selected */}
         {!showChatFullscreen && (
           <ConversationList userId={session.user.id} activeId={conversationId} />
@@ -108,7 +115,7 @@ export default function Messages() {
             userEmail={session.user.email}
             listingId={searchParams.get('listing')}
             isMobileFullscreen={showChatFullscreen}
-            keyboardOffset={keyboardOffset}
+            mobileViewport={mobileViewport}
             onBackClick={() => navigate('/messages')}
           />
         ) : (
@@ -237,7 +244,7 @@ function ConversationList({ userId, activeId }) {
   )
 }
 
-function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscreen, keyboardOffset, onBackClick }) {
+function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscreen, mobileViewport, onBackClick }) {
   const [items, setItems] = useState([])
   const [conversation, setConversation] = useState(null)
   const [activeListing, setActiveListing] = useState(null)
@@ -253,7 +260,8 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
   const [pendingMessages, setPendingMessages] = useState([])
   const listingContextInitialized = useRef(false)
   const messagesRef = useRef(null)
-  const bottomRef = useRef(null)
+  const hasInitialMessageScroll = useRef(false)
+  const shouldStickToMessageBottom = useRef(true)
 
   async function retryPendingMessages() {
     if (!navigator.onLine || pendingMessages.length === 0) return
@@ -364,8 +372,21 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
   useEffect(() => {
     const messagePane = messagesRef.current
     if (!messagePane) return
-    messagePane.scrollTo({ top: messagePane.scrollHeight, behavior: 'smooth' })
+    if (!hasInitialMessageScroll.current && items.length > 0) {
+      hasInitialMessageScroll.current = true
+      messagePane.scrollTop = messagePane.scrollHeight
+      return
+    }
+
+    if (shouldStickToMessageBottom.current) {
+      messagePane.scrollTo({ top: messagePane.scrollHeight, behavior: 'smooth' })
+    }
   }, [items])
+
+  function updateMessageScrollPosition(event) {
+    const pane = event.currentTarget
+    shouldStickToMessageBottom.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 120
+  }
 
   const handleMessageEdit = async (messageId, newBody) => {
     const trimmed = (newBody || '').trim()
@@ -417,7 +438,7 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
   async function loadThread() {
     const { data: convo } = await supabase
       .from('conversations')
-      .select('*, listing:listing_id(id, title, price, images, slug), buyer:buyer_id(id, business_name, full_name, avatar_url, verified_seller), seller:seller_id(id, business_name, full_name, avatar_url, verified_seller, paystack_recipient_code, paystack_subaccount_code)')
+      .select('*, listing:listing_id(id, title, price, images, slug), buyer:buyer_id(id, business_name, full_name, avatar_url, verified_seller), seller:seller_id(id, business_name, full_name, avatar_url, verified_seller, paystack_recipient_code)')
       .eq('id', conversationId).single()
     setConversation(convo)
 
@@ -506,17 +527,18 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
       delivered_at: null,
     }
 
-    setItems((prev) => [...prev, optimisticMessage])
-    setPendingMessages((prev) => [...prev, { tempId, body: trimmedBody, created_at: optimisticMessage.created_at }])
-    setBody('')
-    setSelectedFiles([])
-
     if (!navigator.onLine) {
+      setItems((prev) => [...prev, { ...optimisticMessage, failed: true, error: 'You are offline. Reconnect and try sending again.' }])
+      setPendingMessages((prev) => [...prev, { tempId, body: trimmedBody, created_at: optimisticMessage.created_at, pending: true }])
       return
     }
 
+    setItems((prev) => [...prev, optimisticMessage])
+    setPendingMessages((prev) => [...prev, { tempId, body: trimmedBody, created_at: optimisticMessage.created_at, pending: true }])
+    setBody('')
+    setSelectedFiles([])
     setSending(true)
-    setUploadingAttachments(true)
+    setUploadingAttachments(selectedFiles.length > 0)
     try {
       const { data: message, error: messageError } = await supabase
         .from('messages')
@@ -590,7 +612,7 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
   return (
     <div
       className={isMobileFullscreen ? "flex h-full min-h-0 flex-col overflow-hidden bg-white" : "flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-hairline bg-white"}
-      style={isMobileFullscreen ? { height: `calc(100dvh - ${keyboardOffset}px)` } : undefined}
+      style={isMobileFullscreen ? { height: mobileViewport.height ? `${mobileViewport.height}px` : '100dvh' } : undefined}
     >
       <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-hairline bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -678,7 +700,7 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
         </div>
       )}
 
-      <div ref={messagesRef} className="flex-1 space-y-2 overscroll-contain overflow-y-auto px-3 py-3 sm:px-4" style={{ minHeight: 0 }}>
+      <div ref={messagesRef} onScroll={updateMessageScrollPosition} className="flex-1 space-y-2 overscroll-contain overflow-y-auto px-3 py-3 sm:px-4" style={{ minHeight: 0 }}>
         {items.map((item) =>
           item.kind === 'offer' ? (
             <OfferCard
@@ -689,8 +711,6 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
               userId={userId}
               buyerEmail={userEmail}
               sellerRecipientCode={conversation?.seller?.paystack_recipient_code}
-              sellerSubaccount={conversation?.seller?.paystack_subaccount_code}
-              onPaymentComplete={loadThread}
             />
           ) : (
             <MessageBubble
@@ -703,7 +723,6 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
             />
           )
         )}
-        <div ref={bottomRef} />
       </div>
 
       {offerMode ? (
@@ -712,18 +731,22 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
         <form
           onSubmit={sendMessage}
           className="shrink-0 border-t border-hairline bg-white px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:py-3 sm:pb-3"
-          style={isMobileFullscreen ? { paddingBottom: `calc(${Math.max(keyboardOffset, 0)}px + env(safe-area-inset-bottom))` } : undefined}
         >
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <input
+                id="chat-attachment-input"
               type="file"
               accept="image/*,video/*"
               multiple
               onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
-              className="text-xs text-muted"
+                className="sr-only"
             />
+              <label htmlFor="chat-attachment-input" title="Attach photos or videos" className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-hairline text-muted transition hover:border-seal hover:text-seal">
+                <Paperclip size={18} aria-hidden="true" />
+                <span className="sr-only">Choose files</span>
+              </label>
             {selectedFiles.length > 0 && (
-              <span className="text-[10px] uppercase tracking-widest text-seal">{selectedFiles.length} media selected</span>
+                <span className="max-w-[55vw] truncate text-[10px] text-seal">{selectedFiles.length} file{selectedFiles.length === 1 ? '' : 's'} selected</span>
             )}
           </div>
           <div className="flex gap-2">
@@ -736,22 +759,10 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
             <button
               type="submit" disabled={sending || uploadingAttachments}
               aria-label={uploadingAttachments ? 'Uploading attachment' : sending ? 'Sending message' : 'Send message'}
-              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-seal text-surface hover:bg-seal/90 disabled:opacity-50 transition-colors sm:h-12 sm:w-12"
+              aria-busy={sending || uploadingAttachments}
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-seal text-surface hover:bg-seal/90 transition-colors sm:h-12 sm:w-12"
             >
-              {uploadingAttachments ? (
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeOpacity="0.35" />
-                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              ) : sending ? (
-                <svg className="h-4 w-4 animate-pulse" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M4 12.5 19 4l-3.8 15.2-4.4-6.4L4 12.5Z" fill="currentColor" />
-                </svg>
-              ) : (
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M3 11.5 20 4l-4.2 16-3.5-6.1L3 11.5Z" fill="currentColor" />
-                </svg>
-              )}
+              <Send className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         </form>
@@ -990,15 +1001,47 @@ function MessageBubble({ message, isMine, attachments = [], onEdit, onDelete }) 
   )
 }
 
-function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode, sellerSubaccount, onPaymentComplete }) {
+function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode }) {
   const navigate = useNavigate()
   const [paying, setPaying] = useState(false)
+  const [deliveryAddress, setDeliveryAddress] = useState(offer.delivery_address || '')
+  const [savedAddress, setSavedAddress] = useState(offer.delivery_address || '')
+  const [addressSaved, setAddressSaved] = useState(Boolean(offer.delivery_address))
+  const [savingAddress, setSavingAddress] = useState(false)
+  const [addressError, setAddressError] = useState('')
   const supportEmail = getSupportEmail()
   const itemTotal = Number(offer.price) + Number(offer.delivery_fee)
   const sellerFee = Math.min(itemTotal * 0.05, 5000) // 5%, capped at ₦5,000
   const buyerFee = 100 // flat escrow protection fee
   const totalCharged = itemTotal + buyerFee
-  const hasConnectedPayout = Boolean(sellerRecipientCode || sellerSubaccount)
+  const hasConnectedPayout = Boolean(sellerRecipientCode)
+
+  async function shareDeliveryAddress() {
+    const cleanAddress = deliveryAddress.trim()
+    if (!cleanAddress) {
+      setAddressError('Enter the address where you want the item delivered.')
+      return
+    }
+
+    setSavingAddress(true)
+    setAddressError('')
+    try {
+      const { error } = await supabase.rpc('share_offer_delivery_address', {
+        p_offer_id: offer.id,
+        p_delivery_address: cleanAddress,
+      })
+      if (error) throw error
+
+      setDeliveryAddress(cleanAddress)
+      setSavedAddress(cleanAddress)
+      setAddressSaved(true)
+    } catch (error) {
+      console.error('Failed to share delivery address:', error)
+      setAddressError('Could not share your address. Please try again.')
+    } finally {
+      setSavingAddress(false)
+    }
+  }
 
   async function openAcceptedOfferOrder() {
     const { data: order, error } = await supabase
@@ -1068,9 +1111,9 @@ function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode, s
               }
             }
 
+            const orderId = result.order?.id || result.order_id
             setPaying(false)
-            await onPaymentComplete?.()
-            alert('Payment secured. Funds will be released to the seller once you confirm delivery.')
+            navigate(orderId ? `/orders/${orderId}` : '/orders')
           } catch (err) {
             setPaying(false)
             console.error('Payment callback error:', err)
@@ -1138,9 +1181,44 @@ function OfferCard({ offer, isSeller, userId, buyerEmail, sellerRecipientCode, s
           </div>
         </div>
       </div>
+
+      {isSeller && offer.delivery_address && (
+        <div className="mt-3 rounded-lg border border-seal/20 bg-seal/5 p-3">
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-widest text-seal">Buyer delivery address</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-xs text-ink">{offer.delivery_address}</p>
+        </div>
+      )}
       
       {!isSeller && offer.status === 'pending' && (
         <>
+          <div className="mt-4 rounded-xl border border-hairline bg-white p-3">
+            <label htmlFor={`offer-address-${offer.id}`} className="block text-xs font-semibold text-ink">Delivery address</label>
+            <p className="mt-1 text-[11px] text-muted">Shared securely with the seller and attached to your order.</p>
+            <textarea
+              id={`offer-address-${offer.id}`}
+              value={deliveryAddress}
+              maxLength={500}
+              rows={3}
+              onChange={(event) => {
+                setDeliveryAddress(event.target.value)
+                setAddressSaved(false)
+              }}
+              placeholder="Street address, area, city, state"
+              className="mt-2 w-full resize-y rounded-lg border border-hairline bg-surfacealt px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-seal focus:outline-none"
+            />
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[10px] text-muted">{addressSaved ? 'Shared with seller' : 'Not shared yet'}</span>
+              <button
+                type="button"
+                onClick={shareDeliveryAddress}
+                disabled={savingAddress || !deliveryAddress.trim() || (addressSaved && deliveryAddress.trim() === savedAddress)}
+                className="rounded-full border border-seal px-3 py-1.5 font-mono text-[10px] font-semibold text-seal hover:bg-seal/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingAddress ? 'Sharing…' : addressSaved ? 'Update address' : 'Share with seller'}
+              </button>
+            </div>
+            {addressError && <p role="alert" className="mt-2 text-xs text-red-700">{addressError}</p>}
+          </div>
           <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
             🔒 Safe Pay: Your ₦{totalCharged.toLocaleString()} will be held in escrow. The seller only gets paid after you receive your item and approve it.
           </div>

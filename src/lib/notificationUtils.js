@@ -208,6 +208,7 @@ export function getNotificationRoute(notification) {
     case "new_message":
     case "offer_received":
     case "offer_accepted":
+    case "delivery_address_shared":
       return related_conversation_id ? `/messages/${related_conversation_id}` : "/messages";
 
     // Order notifications

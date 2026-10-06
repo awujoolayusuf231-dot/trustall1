@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { getPublicSiteHost } from '../lib/authRedirect.js'
 import { supabase } from '../lib/supabaseClient.js'
 import { useProfile } from '../lib/useProfile.js'
@@ -90,17 +90,36 @@ export default function Sell() {
   if (loading || !profile) return <div className="px-6 py-24 text-center text-muted">Loading…</div>
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 sm:py-16">
-      <p className="font-mono text-xs uppercase tracking-widest text-seal">Seller dashboard</p>
-      <h1 className="mt-3 font-display text-3xl font-bold text-ink">
-        {profile.business_name || profile.full_name || 'Your seller space'}
-      </h1>
+    <section className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-16">
+      <div className="seller-hero overflow-hidden rounded-[30px] border border-seal/20 p-5 sm:p-7">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-seal-light">Seller dashboard</p>
+            <h1 className="mt-3 font-display text-3xl font-bold text-ink sm:text-4xl">
+              {profile.business_name || profile.full_name || 'Your seller space'}
+            </h1>
+            <p className="mt-2 max-w-xl text-sm text-muted">
+              Keep your storefront, orders, payouts, and trust signals moving in one premium workspace.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="seller-badge bg-white/15 text-white">{profile.verified_seller ? 'Verified seller' : 'Profile setup'}</span>
+            <span className="seller-badge bg-white/10 text-white/90">{profile.handle ? `@${profile.handle}` : 'Complete profile'}</span>
+            <Link
+              to={`/seller/${encodeURIComponent(profile.handle || profile.id)}`}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 font-mono text-xs font-semibold text-seal transition hover:bg-seal-light sm:w-auto"
+            >
+              View storefront <span aria-hidden="true">↗</span>
+            </Link>
+          </div>
+        </div>
+      </div>
 
       <SellerSalesOverview salesSummary={salesSummary} loadingSales={loadingSales} profile={profile} />
       <SellerOrderManager session={session} />
       <ProfileSetup profile={profile} setProfile={setProfile} session={session} />
       <VerificationBlock profile={profile} session={session} />
-      <PayoutBlock profile={profile} session={session} />
+      <PayoutBlock profile={profile} setProfile={setProfile} session={session} />
       <ListingsBlock profile={profile} session={session} />
     </section>
   )
@@ -108,38 +127,42 @@ export default function Sell() {
 
 function SellerSalesOverview({ salesSummary, loadingSales, profile }) {
   return (
-    <section className="mt-8 grid gap-4 sm:grid-cols-5">
-      <div className="rounded-2xl border border-hairline bg-white p-5">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Completed sales</p>
-        <p className="mt-3 font-display text-2xl font-bold text-ink">
-          {loadingSales ? '…' : `₦${Number(salesSummary.totalRevenue || 0).toLocaleString()}`}
-        </p>
+    <section className="seller-panel mt-8 overflow-hidden bg-gradient-to-br from-seal via-[#24654d] to-[#1a4637] p-5 text-white shadow-[0_24px_60px_rgba(31,77,56,0.2)] sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-seal-light">Overview</p>
+          <h2 className="mt-2 font-display text-xl font-bold sm:text-2xl">Your business at a glance</h2>
+        </div>
+        <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-white/90">
+          Live
+        </span>
       </div>
-      <div className="rounded-2xl border border-hairline bg-white p-5">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Completed orders</p>
-        <p className="mt-3 font-display text-2xl font-bold text-ink">
-          {loadingSales ? '…' : Number(salesSummary.completedOrders || 0)}
-        </p>
-      </div>
-      <div className="rounded-2xl border border-hairline bg-white p-5">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Active orders</p>
-        <p className="mt-3 font-display text-2xl font-bold text-ink">
-          {loadingSales ? '…' : Number(salesSummary.liveOrders || 0)}
-        </p>
-      </div>
-      <div className="rounded-2xl border border-hairline bg-white p-5">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Wallet pending</p>
-        <p className="mt-3 font-display text-2xl font-bold text-marigold-deep">
-          {loadingSales ? '…' : `₦${Number(profile?.wallet_pending || 0).toLocaleString()}`}
-        </p>
-        <p className="mt-1 text-[10px] text-muted">Orders waiting buyer confirmation</p>
-      </div>
-      <div className="rounded-2xl border border-hairline bg-white p-5">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Wallet available</p>
-        <p className="mt-3 font-display text-2xl font-bold text-seal">
-          {loadingSales ? '…' : `₦${Number(profile?.wallet_cleared || 0).toLocaleString()}`}
-        </p>
-        <p className="mt-1 text-[10px] text-muted">Release-ready / withdrawable</p>
+
+      <div className="mt-5 grid divide-y divide-white/15 border-t border-white/15 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+        <div className="py-4 sm:px-4 sm:first:pl-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-white/70">Revenue</p>
+          <p className="mt-2 font-display text-2xl font-bold text-white">
+            {loadingSales ? '…' : `₦${Number(salesSummary.totalRevenue || 0).toLocaleString()}`}
+          </p>
+        </div>
+        <div className="py-4 sm:px-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-white/70">Completed</p>
+          <p className="mt-2 font-display text-2xl font-bold text-white">
+            {loadingSales ? '…' : Number(salesSummary.completedOrders || 0)}
+          </p>
+        </div>
+        <div className="py-4 sm:px-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-white/70">Active</p>
+          <p className="mt-2 font-display text-2xl font-bold text-white">
+            {loadingSales ? '…' : Number(salesSummary.liveOrders || 0)}
+          </p>
+        </div>
+        <div className="py-4 sm:px-4 sm:last:pr-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-white/80">Available</p>
+          <p className="mt-2 font-display text-2xl font-bold text-marigold-soft">
+            {loadingSales ? '…' : `₦${Number(profile?.wallet_cleared || 0).toLocaleString()}`}
+          </p>
+        </div>
       </div>
     </section>
   )
@@ -212,22 +235,24 @@ function SellerOrderManager({ session }) {
   if (loading) return <div className="mt-8 text-sm text-muted">Loading seller order pipeline…</div>
 
   return (
-    <section className="mt-10 rounded-2xl border border-hairline bg-white p-6">
-      <div className="flex items-center justify-between">
+    <section className="seller-panel mt-10 p-6 sm:p-7">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-widest text-seal">Seller order management</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Seller order management</p>
           <h2 className="mt-1 font-display text-xl font-bold text-ink">Your orders</h2>
         </div>
-        <span className="rounded-full bg-surfacealt px-3 py-1 font-mono text-[10px] text-muted">{orders.length}</span>
+        <span className="rounded-full bg-seal/10 px-3 py-1 font-mono text-[10px] font-semibold text-seal">{orders.length} total</span>
       </div>
 
       {orders.length === 0 && (
-        <p className="mt-4 text-sm text-muted">No orders yet.</p>
+        <div className="mt-5 rounded-2xl border border-dashed border-hairline bg-surfacealt/60 p-6 text-center text-sm text-muted">
+          No orders yet.
+        </div>
       )}
 
       <div className="mt-5 space-y-3">
         {orders.map((order) => (
-          <article key={order.id} className="rounded-xl border border-hairline bg-surfacealt p-4">
+          <article key={order.id} className="rounded-2xl border border-hairline bg-surfacealt p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-display text-sm font-semibold text-ink">{order.offer?.item_title || 'Order'}</p>
@@ -243,7 +268,7 @@ function SellerOrderManager({ session }) {
                   <button
                     onClick={() => markAsDelivered(order.id)}
                     disabled={busyOrderId === order.id}
-                    className="rounded-full bg-amber-700 px-4 py-2 font-mono text-[10px] font-bold text-white hover:bg-amber-800 disabled:opacity-50"
+                    className="rounded-full bg-seal px-4 py-2 font-mono text-[10px] font-bold text-white hover:bg-seal-deep disabled:opacity-50"
                   >
                     {busyOrderId === order.id ? 'Updating...' : 'Mark as Delivered'}
                   </button>
@@ -300,10 +325,13 @@ function ProfileSetup({ profile, setProfile, session }) {
   }
 
   return (
-    <div className="mt-10 rounded-2xl border border-hairline bg-white p-4 sm:p-6">
+    <div className="seller-panel mt-10 p-4 sm:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-display text-lg text-ink">1. Your seller profile</h2>
-        {complete && <span className="font-mono text-xs text-seal">✓ complete</span>}
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Profile</p>
+          <h2 className="mt-1 font-display text-lg text-ink">Your seller profile</h2>
+        </div>
+        {complete && <span className="rounded-full bg-seal/10 px-3 py-1 font-mono text-[10px] font-semibold text-seal">✓ complete</span>}
       </div>
       <form onSubmit={save} className="seller-profile-form mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
         <input
@@ -404,8 +432,9 @@ function VerificationBlock({ profile, session }) {
 
   if (profile.verified_seller) {
     return (
-      <div className="mt-6 rounded-2xl border border-seal/30 bg-seal/5 p-6">
-        <h2 className="font-display text-lg text-ink">2. Verification</h2>
+      <div className="seller-panel mt-6 border-seal/30 bg-seal/5 p-6">
+        <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Verification</p>
+        <h2 className="mt-1 font-display text-lg text-ink">Seller verification</h2>
         <p className="mt-2 text-sm text-seal">✓ You're a verified seller — Level {profile.seller_level} badge active.</p>
       </div>
     )
@@ -415,8 +444,9 @@ function VerificationBlock({ profile, session }) {
 
   if (existing && existing.status === 'pending') {
     return (
-      <div className="mt-6 rounded-2xl border border-hairline bg-white p-6">
-        <h2 className="font-display text-lg text-ink">2. Verification</h2>
+      <div className="seller-panel mt-6 p-6">
+        <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Verification</p>
+        <h2 className="mt-1 font-display text-lg text-ink">Seller verification</h2>
         <p className="mt-2 text-sm text-muted">
           Submitted, under review — verification is free and takes up to 3 business days.
         </p>
@@ -425,8 +455,9 @@ function VerificationBlock({ profile, session }) {
   }
 
   return (
-    <div className="mt-6 rounded-2xl border border-hairline bg-white p-6">
-      <h2 className="font-display text-lg text-ink">2. Get verified — free, always</h2>
+    <div className="seller-panel mt-6 p-6">
+      <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Verification</p>
+      <h2 className="mt-1 font-display text-lg text-ink">Get verified — free, always</h2>
       <p className="mt-1 text-sm text-muted">
         Verified sellers get a trust badge on every listing. Takes up to 3 business days to review.
       </p>
@@ -473,20 +504,18 @@ function VerificationBlock({ profile, session }) {
   )
 }
 
-function PayoutBlock({ profile, session }) {
+function PayoutBlock({ profile, setProfile, session }) {
   const [bankCode, setBankCode] = useState('')
   const [accountNumber, setAccountNumber] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-
-  // Task 7: Check if seller has listings but no recipient code (legacy)
   const isLegacySeller = profile?.is_seller && !profile?.paystack_recipient_code
 
   if (profile.paystack_recipient_code) {
     return (
-      <div className="mt-6 rounded-2xl border border-seal/30 bg-seal/5 p-6">
-        <h2 className="font-display text-lg text-ink">3. Payout account</h2>
+      <div className="seller-panel mt-6 border-seal/30 bg-seal/5 p-6">
+        <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Payout</p>
+        <h2 className="mt-1 font-display text-lg text-ink">Payout account</h2>
         <p className="mt-2 text-sm text-seal">✓ Connected — Paystack routes your share automatically at checkout.</p>
       </div>
     )
@@ -496,33 +525,45 @@ function PayoutBlock({ profile, session }) {
     e.preventDefault()
     setSubmitting(true)
     setError('')
-    const { data: { session: s } } = await supabase.auth.getSession()
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paystack-create-subaccount`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.access_token}` },
-        body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
+    try {
+      const { data: { session: activeSession } } = await supabase.auth.getSession()
+      if (!activeSession?.access_token) throw new Error('Please sign in again before connecting your payout account.')
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paystack-create-recipient`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${activeSession.access_token}` },
+          body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
+        }
+      )
+      const result = await res.json()
+      if (!res.ok || !result.success || !result.recipient_code) {
+        throw new Error(result.error || 'The payout setup could not be completed right now.')
       }
-    )
-    const result = await res.json()
-    setSubmitting(false)
-    if (!res.ok || result.error) { setError(result.error || 'The payout setup could not be completed right now.'); return }
-    setSuccess(true)
+
+      setProfile((currentProfile) => ({ ...currentProfile, paystack_recipient_code: result.recipient_code }))
+    } catch (connectError) {
+      setError(connectError.message || 'The payout setup could not be completed right now.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
     <>
       {isLegacySeller && (
-        <div className="mt-6 rounded-2xl border border-marigold/50 bg-marigold/10 p-6">
-          <h2 className="font-display text-lg text-marigold-deep">⚠️ Payout setup needed</h2>
+        <div className="seller-panel mt-6 border-marigold/40 bg-marigold/10 p-6">
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-marigold-deep">Payout</p>
+          <h2 className="mt-1 font-display text-lg text-marigold-deep">Payout setup needed</h2>
           <p className="mt-2 text-sm text-marigold-deep">
             Your payout settings need to be updated. The old bank connection method no longer works for payments. Please reconnect your bank details below to continue receiving payments from your sales.
           </p>
         </div>
       )}
-      <div className="mt-6 rounded-2xl border border-hairline bg-white p-6">
-      <h2 className="font-display text-lg text-ink">3. Connect your payout account</h2>
+      <div className="seller-panel mt-6 p-6">
+      <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Payout</p>
+      <h2 className="mt-1 font-display text-lg text-ink">Connect your payout account</h2>
       <p className="mt-1 text-sm text-muted">
         Paystack automatically splits every sale at checkout — your share (5% fee, capped at
         ₦5,000) settles to this account on Paystack's standard schedule.
@@ -541,7 +582,6 @@ function PayoutBlock({ profile, session }) {
           className="rounded-xl border border-hairline bg-surfacealt px-4 py-3 text-sm text-ink placeholder:text-muted focus:border-seal outline-none"
         />
         {error && <p className="text-sm text-marigold-deep sm:col-span-2">{error}</p>}
-        {success && <p className="text-sm text-seal sm:col-span-2">Connected!</p>}
         <button
           type="submit" disabled={submitting}
           className="rounded-full bg-ink px-6 py-2.5 font-body text-sm font-medium text-surface hover:bg-inksoft disabled:opacity-50 sm:col-span-2 sm:w-fit"
@@ -575,6 +615,22 @@ function ListingsBlock({ profile, session }) {
   const [error, setError] = useState('')
 
   useEffect(() => { loadListings() }, [])
+
+  useEffect(() => {
+    if (!showForm) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape' && !submitting) setShowForm(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showForm, submitting])
 
   async function loadListings() {
     const { data } = await supabase.from('listings').select('*').eq('seller_id', session.user.id)
@@ -783,13 +839,16 @@ function ListingsBlock({ profile, session }) {
   const needsProfile = !(profile.business_name && profile.handle)
 
   return (
-    <div className="mt-6 rounded-2xl border border-hairline bg-white p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="font-display text-lg text-ink">4. Your listings</h2>
+    <div className="seller-panel mt-6 p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-seal">Listings</p>
+          <h2 className="mt-1 font-display text-lg text-ink">Your storefront</h2>
+        </div>
         {!needsProfile && (
           <button
             onClick={() => setShowForm(!showForm)}
-            className="rounded-full bg-marigold px-5 py-2 font-body text-sm font-semibold text-ink hover:bg-marigold-deep"
+            className="rounded-full bg-seal px-5 py-2 font-body text-sm font-semibold text-white hover:bg-seal-deep"
           >
             {showForm ? 'Cancel' : '+ New listing'}
           </button>
@@ -801,14 +860,44 @@ function ListingsBlock({ profile, session }) {
       )}
 
       {showForm && (
-        productType === 'digital_service' ? (
-          <ServiceGigWizard
-            session={session}
-            existingListing={editingServiceListing}
-            onCancel={() => { setShowForm(false); setProductType('physical'); setEditingServiceListing(null) }}
-            onPublished={() => { setShowForm(false); setProductType('physical'); setEditingServiceListing(null); loadListings() }}
-          />
-        ) : (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-ink/55 p-0 backdrop-blur-sm sm:items-center sm:p-5"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !submitting) setShowForm(false)
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="listing-dialog-title"
+            className="flex max-h-[94dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[28px] border border-hairline bg-surface shadow-2xl sm:max-h-[90dvh] sm:rounded-[28px]"
+          >
+            <header className="flex shrink-0 items-center justify-between gap-4 border-b border-hairline bg-white px-5 py-4 sm:px-7">
+              <div>
+                <p className="font-mono text-[9px] uppercase tracking-[0.24em] text-seal">Your storefront</p>
+                <h2 id="listing-dialog-title" className="mt-1 font-display text-lg font-bold text-ink">
+                  {editingId ? 'Edit listing' : 'Create a listing'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                disabled={submitting}
+                aria-label="Close listing form"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-hairline text-xl text-muted transition hover:border-seal hover:text-seal disabled:opacity-50"
+              >
+                ×
+              </button>
+            </header>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 sm:px-7">
+              {productType === 'digital_service' ? (
+                <ServiceGigWizard
+                  session={session}
+                  existingListing={editingServiceListing}
+                  onCancel={() => { setShowForm(false); setProductType('physical'); setEditingServiceListing(null) }}
+                  onPublished={() => { setShowForm(false); setProductType('physical'); setEditingServiceListing(null); loadListings() }}
+                />
+              ) : (
         <form onSubmit={submit} className="mt-5 grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <div className="mb-4 flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted">
@@ -1003,7 +1092,10 @@ function ListingsBlock({ profile, session }) {
             {submitting ? (editingId ? 'Updating…' : 'Publishing…') : (editingId ? 'Update listing' : 'Publish listing')}
           </button>
         </form>
-        )
+              )}
+            </div>
+          </section>
+        </div>
       )}
 
       <div className="mt-5 space-y-3">

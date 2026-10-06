@@ -1,4 +1,5 @@
-import { loadRecentlyViewed } from '../lib/listingFeatures.js'
+import { Trash2 } from 'lucide-react'
+import { clearRecentlyViewed, loadRecentlyViewed } from '../lib/listingFeatures.js'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient.js'
@@ -41,6 +42,7 @@ export function SellerDashboard() {
   const { session, profile, loading } = useProfile()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('orders')
+  const [orderFilter, setOrderFilter] = useState('all')
   const [orders, setOrders] = useState([])
   const [loadingOrders, setLoadingOrders] = useState(true)
   const [ordersError, setOrdersError] = useState(null)
@@ -191,6 +193,12 @@ export function SellerDashboard() {
     }
   }, [orders])
 
+  const visibleOrders = useMemo(() => {
+    if (orderFilter === 'active') return orders.filter((order) => ['paid', 'fulfilled'].includes(order.status))
+    if (orderFilter === 'completed') return orders.filter((order) => ['confirmed', 'completed', 'complete'].includes(order.status))
+    return orders
+  }, [orders, orderFilter])
+
   const ReviewStars = ({ value }) => (
     <span className="font-mono text-xs text-marigold-deep">
       {Array.from({ length: 5 }).map((_, idx) => (
@@ -202,23 +210,39 @@ export function SellerDashboard() {
   if (loading && !session) return <div className="px-6 py-24 text-center text-muted">Loading…</div>
 
   return (
-    <section className="mx-auto max-w-6xl px-4 sm:px-6 py-8 sm:py-16">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div className="flex-1">
-          <p className="font-mono text-xs uppercase tracking-widest text-seal">Seller dashboard</p>
-          <h1 className="mt-3 font-display text-2xl sm:text-3xl font-bold text-ink">Sales & Orders</h1>
-          <p className="mt-2 text-sm text-muted">Track orders from your buyers</p>
+    <section className="mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-12">
+      <div className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#1f4d38] via-[#286649] to-[#183d30] p-5 text-white shadow-[0_20px_50px_rgba(31,77,56,0.16)] sm:p-7">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-white/70">Seller workspace</p>
+            <h1 className="mt-2 font-display text-3xl font-bold sm:text-4xl">Sales & Orders</h1>
+            <p className="mt-2 text-sm text-white/75">Manage fulfillment, track your sales, and build buyer trust.</p>
+          </div>
+          <Link to="/sell" className="inline-flex w-full items-center justify-center rounded-full bg-marigold px-5 py-3 font-mono text-xs font-semibold text-ink transition hover:bg-marigold-soft sm:w-auto">
+            + List a new item
+          </Link>
         </div>
-        <Link to="/sell" className="rounded-full bg-seal px-5 py-2 font-mono text-xs font-semibold text-surface hover:bg-seal-deep transition text-center sm:text-right">
-          List new item
-        </Link>
+
+        <div className="mt-6 grid grid-cols-3 divide-x divide-white/20 border-t border-white/20 pt-4">
+          <div className="pr-3 sm:pr-6">
+            <p className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.1em] text-white/65 sm:text-[10px] sm:tracking-[0.18em]">All orders</p>
+            <p className="mt-1 font-display text-2xl font-bold sm:text-3xl">{summary.total}</p>
+          </div>
+          <div className="px-3 sm:px-6">
+            <p className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.1em] text-white/65 sm:text-[10px] sm:tracking-[0.18em]">Needs action</p>
+            <p className="mt-1 font-display text-2xl font-bold text-marigold-soft sm:text-3xl">{summary.active}</p>
+          </div>
+          <div className="pl-3 sm:pl-6">
+            <p className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.1em] text-white/65 sm:text-[10px] sm:tracking-[0.18em]">Completed</p>
+            <p className="mt-1 font-display text-2xl font-bold sm:text-3xl">{summary.past}</p>
+          </div>
+        </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="mt-8 flex gap-2 border-b border-hairline">
+      <div className="mt-7 flex gap-2 border-b border-hairline">
         <button
           onClick={() => setActiveTab('orders')}
-          className={`px-4 py-3 font-mono text-xs font-semibold transition border-b-2 ${
+          className={`border-b-2 px-4 py-3 font-mono text-xs font-semibold transition ${
             activeTab === 'orders'
               ? 'border-seal text-seal'
               : 'border-transparent text-muted hover:text-ink'
@@ -228,7 +252,7 @@ export function SellerDashboard() {
         </button>
         <button
           onClick={() => setActiveTab('myreviews')}
-          className={`px-4 py-3 font-mono text-xs font-semibold transition border-b-2 ${
+          className={`border-b-2 px-4 py-3 font-mono text-xs font-semibold transition ${
             activeTab === 'myreviews'
               ? 'border-seal text-seal'
               : 'border-transparent text-muted hover:text-ink'
@@ -247,19 +271,22 @@ export function SellerDashboard() {
               <p className="mt-1 text-sm text-marigold-deep">{ordersError}</p>
             </div>
           )}
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-hairline bg-white p-5">
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Total orders</p>
-              <p className="mt-2 font-display text-2xl font-bold text-ink">{summary.total}</p>
-            </div>
-            <div className="rounded-2xl border border-hairline bg-white p-5">
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Pending fulfillment</p>
-              <p className="mt-2 font-display text-2xl font-bold text-ink">{summary.active}</p>
-            </div>
-            <div className="rounded-2xl border border-hairline bg-white p-5">
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Completed</p>
-              <p className="mt-2 font-display text-2xl font-bold text-ink">{summary.past}</p>
-            </div>
+          <div className="mt-6 grid grid-cols-3 gap-2" aria-label="Filter seller orders">
+            {[
+              { id: 'all', label: 'All orders', count: summary.total },
+              { id: 'active', label: 'Needs action', count: summary.active },
+              { id: 'completed', label: 'Completed', count: orders.filter((order) => ['confirmed', 'completed', 'complete'].includes(order.status)).length },
+            ].map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => setOrderFilter(filter.id)}
+                aria-pressed={orderFilter === filter.id}
+                className={`w-full whitespace-nowrap rounded-full border px-2 py-2 text-center font-mono text-[9px] font-semibold transition sm:px-4 sm:text-[10px] ${orderFilter === filter.id ? 'border-seal bg-seal text-white' : 'border-hairline bg-white text-muted hover:border-seal/40 hover:text-seal'}`}
+              >
+                {filter.label} <span className="ml-1 opacity-75">{filter.count}</span>
+              </button>
+            ))}
           </div>
 
           {loadingOrders && <p className="mt-10 text-muted">Loading orders…</p>}
@@ -273,8 +300,12 @@ export function SellerDashboard() {
             </div>
           )}
 
-          <div className="mt-8 space-y-4">
-        {orders.map((order) => {
+          {!loadingOrders && orders.length > 0 && visibleOrders.length === 0 && (
+            <p className="mt-8 rounded-2xl border border-dashed border-hairline p-6 text-center text-sm text-muted">There are no {orderFilter === 'active' ? 'orders needing action' : 'completed orders'} yet.</p>
+          )}
+
+          <div className="mt-5 divide-y divide-hairline">
+        {visibleOrders.map((order) => {
           const isActive = ['paid', 'fulfilled'].includes(order.status)
           const isCompleted = ['confirmed', 'completed', 'complete'].includes(order.status)
           const statusMap = {
@@ -285,69 +316,46 @@ export function SellerDashboard() {
           }
 
           return (
-            <article key={order.id} className="rounded-2xl border border-hairline bg-gradient-to-br from-white to-surface hover:shadow-md transition p-4 sm:p-5">
-              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <article key={order.id} className="py-5 first:pt-2">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex-1 min-w-0">
-                  <p className="font-display text-base font-bold text-ink truncate">{order.offer?.item_title || 'Order'}</p>
-                  <p className="mt-1 font-body text-xs text-muted line-clamp-2">
-                    Status: <strong>{statusMap[order.status] || order.status}</strong> · {new Date(order.created_at).toLocaleDateString()}
+                  <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted">Order · {new Date(order.created_at).toLocaleDateString()}</p>
+                  <p className="mt-1 font-display text-base font-bold text-ink">{order.offer?.item_title || 'Order'}</p>
+                  <p className="mt-1 text-xs text-muted">
+                    Buyer: <span className="font-semibold text-ink">{order.buyer?.full_name || order.buyer?.business_name || 'Buyer'}</span>
+                    {order.buyer?.handle && <span className="ml-1 font-mono">@{order.buyer.handle}</span>}
                   </p>
                 </div>
 
-                {/* Buyer Profile Card - For Seller View */}
-                <Link to={`/buyer/${order.buyer?.id || order.buyer?.handle}`} className="flex items-center gap-3 rounded-xl border border-hairline bg-white p-3 hover:border-seal hover:shadow-sm transition lg:flex-shrink-0 w-full sm:w-auto sm:min-w-[240px]">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-seal/10 border border-seal/20 font-display text-xs font-bold text-seal">
-                    {order.buyer?.full_name?.[0] || order.buyer?.business_name?.[0] || '?'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-display text-xs sm:text-sm font-bold text-ink truncate">{order.buyer?.full_name || order.buyer?.business_name || 'Buyer'}</p>
-                    <p className="font-mono text-[10px] text-muted truncate">@{order.buyer?.handle || 'user'}</p>
-                    {buyerRatings[order.buyer?.id] && buyerRatings[order.buyer?.id].reviewCount > 0 && (
-                      <p className="font-mono text-[10px] text-seal font-semibold truncate">
-                        ★ {buyerRatings[order.buyer?.id].avgRating} ({buyerRatings[order.buyer?.id].reviewCount})
-                      </p>
-                    )}
-                  </div>
-                </Link>
-
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`rounded-full px-3 py-1.5 font-mono text-[10px] font-semibold transition whitespace-nowrap ${
-                    isActive 
-                      ? 'bg-amber-100 text-amber-900' 
-                      : 'bg-green-100 text-green-900'
-                  }`}>
-                    {order.status}
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className={`rounded-full px-3 py-1.5 font-mono text-[10px] font-semibold ${order.status === 'paid' ? 'bg-marigold/20 text-marigold-deep' : order.status === 'fulfilled' ? 'bg-seal/10 text-seal' : order.status === 'disputed' ? 'bg-red-50 text-red-700' : 'bg-surfacealt text-muted'}`}>
+                    {statusMap[order.status] || order.status}
                   </span>
                   <Link 
                     to={`/orders/${order.id}`} 
-                    className="rounded-full border border-seal bg-seal/5 px-4 py-2 font-mono text-[10px] font-semibold text-seal hover:bg-seal hover:text-white transition whitespace-nowrap"
+                    className="rounded-full border border-seal/30 px-4 py-2 font-mono text-[10px] font-semibold text-seal transition hover:bg-seal hover:text-white"
                   >
                     Details
                   </Link>
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-lg bg-seal/5 p-3 border border-seal/10">
-                  <p className="text-[9px] uppercase tracking-widest text-muted font-semibold">Your earnings</p>
-                  <p className="mt-1.5 font-display text-sm sm:text-base font-bold text-seal truncate">₦{Number(order.amount || 0).toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg bg-blue-50 p-3 border border-blue-200">
-                  <p className="text-[9px] uppercase tracking-widest text-blue-700 font-semibold">Delivery fee</p>
-                  <p className="mt-1.5 font-display text-sm sm:text-base font-bold text-blue-900 truncate">₦{Number(order.delivery_fee || 0).toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                  <p className="text-[9px] uppercase tracking-widest text-gray-700 font-semibold">Platform fee</p>
-                  <p className="mt-1.5 font-display text-sm sm:text-base font-bold text-gray-900 truncate">₦{Number(order.seller_fee || 50).toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg bg-surfacealt p-3 border border-hairline">
-                  <p className="text-[9px] uppercase tracking-widest text-muted font-semibold">Status</p>
-                  <p className="mt-1.5 font-display text-xs sm:text-sm font-bold text-ink truncate">{statusMap[order.status] || order.status}</p>
-                </div>
+              <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-2 border-t border-hairline pt-3">
+                <p className="text-xs text-muted">Your earnings <strong className="ml-1 font-display text-sm text-seal">₦{Number(order.seller_payout ?? order.amount ?? 0).toLocaleString()}</strong></p>
+                <p className="text-xs text-muted">Delivery <strong className="ml-1 font-display text-sm text-ink">₦{Number(order.delivery_fee || 0).toLocaleString()}</strong></p>
+                {buyerRatings[order.buyer?.id]?.reviewCount > 0 && (
+                  <Link to={`/buyer/${order.buyer?.id || order.buyer?.handle}`} className="font-mono text-[10px] font-semibold text-seal hover:underline">
+                    Buyer ★ {buyerRatings[order.buyer.id].avgRating} ({buyerRatings[order.buyer.id].reviewCount})
+                  </Link>
+                )}
               </div>
 
+              {order.delivery_address && (
+                <p className="mt-3 line-clamp-2 text-xs text-muted"><span className="font-semibold text-ink">Delivery address:</span> {order.delivery_address}</p>
+              )}
+
               {isCompleted && (
-                <div className="mt-4 flex flex-wrap gap-2 pt-4 border-t border-hairline">
+                <div className="mt-3 flex flex-wrap gap-2">
                   {!reviewsSubmitted[order.id] && (
                     <button
                       onClick={() => {
@@ -475,6 +483,7 @@ export function BuyerDashboard() {
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [recentlyViewed, setRecentlyViewed] = useState([])
+  const [clearingRecent, setClearingRecent] = useState(false)
 
   useEffect(() => {
     if (!loading && !session) navigate('/auth', { state: { redirectTo: '/orders' } })
@@ -552,6 +561,20 @@ export function BuyerDashboard() {
     if (!session?.user?.id) return
     loadRecentlyViewed(session.user.id, 10).then(setRecentlyViewed)
   }, [session?.user?.id])
+
+  async function clearRecent() {
+    if (!session?.user?.id || !window.confirm('Clear your recently viewed listings?')) return
+    setClearingRecent(true)
+    try {
+      await clearRecentlyViewed(session.user.id)
+      setRecentlyViewed([])
+    } catch (error) {
+      console.error('Failed to clear recently viewed listings:', error)
+      alert('Could not clear recently viewed listings. Please try again.')
+    } finally {
+      setClearingRecent(false)
+    }
+  }
 
   // Load reviews submitted by this buyer
   useEffect(() => {
@@ -641,7 +664,12 @@ export function BuyerDashboard() {
 
       {recentlyViewed.length > 0 && (
         <section className="mt-8">
-          <h2 className="font-display text-xl font-bold text-ink">Recently viewed</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-display text-xl font-bold text-ink">Recently viewed</h2>
+            <button type="button" onClick={clearRecent} disabled={clearingRecent} className="inline-flex items-center gap-1.5 font-mono text-xs text-muted hover:text-seal disabled:opacity-50">
+              <Trash2 size={13} aria-hidden="true" />{clearingRecent ? 'Clearing…' : 'Clear history'}
+            </button>
+          </div>
           <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
             {recentlyViewed.map((listing) => (
               <Link key={listing.id} to={`/listing/${listing.slug}`} className="min-w-[190px] rounded-2xl border border-hairline bg-white p-3 transition hover:border-seal">

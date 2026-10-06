@@ -52,7 +52,20 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: result.message || 'Could not create subaccount' }), { status: 400, headers: corsHeaders });
     }
 
-    await admin.from('profiles').update({ paystack_subaccount_code: result.data.subaccount_code }).eq('id', user.id);
+    const { data: updatedProfile, error: profileUpdateError } = await admin
+      .from('profiles')
+      .update({ paystack_subaccount_code: result.data.subaccount_code })
+      .eq('id', user.id)
+      .select('id')
+      .maybeSingle();
+
+    if (profileUpdateError || !updatedProfile) {
+      console.error('Failed to save Paystack subaccount code:', profileUpdateError);
+      return new Response(JSON.stringify({ error: 'Paystack created the subaccount, but Trustall could not save it. Please contact support before trying again.' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     return new Response(JSON.stringify({ success: true, subaccount_code: result.data.subaccount_code }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

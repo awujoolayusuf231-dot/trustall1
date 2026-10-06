@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient.js'
 import { LISTING_CATEGORIES } from '../lib/listingCategories.js'
 import { NIGERIAN_BANKS } from '../lib/nigerianBanks.js'
@@ -238,6 +239,12 @@ function AdminHome({ onLogout, email }) {
           >
             Reports & moderation
           </button>
+          <button
+            onClick={() => setTab('disputes')}
+            className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'disputes' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
+          >
+            Disputes
+          </button>
           <button onClick={() => setTab('listings')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'listings' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}>Listings</button>
           <button onClick={() => setTab('broadcast')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'broadcast' ? 'bg-seal text-surface' : 'border border-hairline text-muted'}`}>Broadcast</button>
           <button onClick={() => setTab('users')} className={`min-h-11 rounded-full px-4 py-1.5 font-mono text-xs ${tab === 'users' ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}>Mediators</button>
@@ -257,9 +264,141 @@ function AdminHome({ onLogout, email }) {
           </button>
         </div>
       </div>
-      {tab === 'overview' ? <AdminOverview /> : tab === 'verification' ? <VerificationQueue /> : tab === 'reports' ? <ReportsQueue /> : tab === 'listings' ? <ListingModeration /> : tab === 'broadcast' ? <BroadcastPanel /> : tab === 'users' ? <MediatorManagement /> : tab === 'payouts' ? <PendingPayouts /> : tab === 'earnings' ? <TrustallEarnings /> : tab === 'blog' ? <BlogDashboard /> : null}
+      {tab === 'overview' ? <AdminOverview /> : tab === 'verification' ? <VerificationQueue /> : tab === 'reports' ? <ReportsQueue /> : tab === 'disputes' ? <DisputesQueue /> : tab === 'listings' ? <ListingModeration /> : tab === 'broadcast' ? <BroadcastPanel /> : tab === 'users' ? <MediatorManagement /> : tab === 'payouts' ? <PendingPayouts /> : tab === 'earnings' ? <TrustallEarnings /> : tab === 'blog' ? <BlogDashboard /> : null}
       {tab === 'catalog' && <ServiceCatalogManager />}
     </div>
+  )
+}
+
+function DisputesQueue() {
+  const [disputes, setDisputes] = useState([])
+  const [statusFilter, setStatusFilter] = useState('active')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    loadDisputes()
+  }, [statusFilter])
+
+  async function loadDisputes() {
+    setLoading(true)
+    setError('')
+
+    let query = supabase
+      .from('disputes')
+      .select(`
+        id, reason, status, created_at, resolved_at, assigned_judge_id,
+        order:order_id (id, amount, buyer:buyer_id(business_name, full_name), seller:seller_id(business_name, full_name)),
+        filer:filed_by (business_name, full_name),
+        judge:assigned_judge_id (business_name, full_name)
+      `)
+      .order('created_at', { ascending: false })
+
+    if (statusFilter === 'active') {
+      query = query.in('status', ['open', 'under_review'])
+    } else if (statusFilter === 'open') {
+      query = query.eq('status', 'open')
+    } else if (statusFilter === 'under_review') {
+      query = query.eq('status', 'under_review')
+    } else if (statusFilter === 'resolved') {
+      query = query.like('status', 'resolved%')
+    }
+
+    const { data, error: queryError } = await query
+    if (queryError) {
+      setError(queryError.message || 'Unable to load disputes.')
+      setDisputes([])
+    } else {
+      setDisputes(data || [])
+    }
+    setLoading(false)
+  }
+
+  function formatStatus(status) {
+    return String(status || 'open').replace(/_/g, ' ')
+  }
+
+  return (
+    <section className="mx-auto max-w-6xl px-6 py-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="font-mono text-xs uppercase tracking-widest text-seal">Disputes</p>
+          <h1 className="mt-2 font-display text-2xl font-bold text-ink">Platform disputes</h1>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {['active', 'open', 'under_review', 'resolved'].map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setStatusFilter(filter)}
+              className={`rounded-full px-3 py-1.5 font-mono text-[10px] font-semibold ${statusFilter === filter ? 'bg-ink text-surface' : 'border border-hairline text-muted'}`}
+            >
+              {filter === 'active' ? 'Open + under review' : filter === 'under_review' ? 'Under review' : filter === 'resolved' ? 'Resolved' : 'Open'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && <p className="mt-4 text-sm text-marigold-deep">{error}</p>}
+
+      <div className="mt-6 overflow-x-auto rounded-2xl border border-hairline bg-white">
+        <table className="min-w-full text-left text-sm">
+          <thead className="border-b border-hairline bg-surfacealt text-xs text-muted">
+            <tr>
+              <th className="p-3">Dispute</th>
+              <th className="p-3">Filed by</th>
+              <th className="p-3">Order</th>
+              <th className="p-3">Buyer</th>
+              <th className="p-3">Seller</th>
+              <th className="p-3">Status</th>
+              <th className="p-3">Assigned</th>
+              <th className="p-3">Age</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan="8" className="p-5 text-muted">Loading disputes…</td>
+              </tr>
+            ) : disputes.length === 0 ? (
+              <tr>
+                <td colSpan="8" className="p-5 text-muted">No disputes match this filter.</td>
+              </tr>
+            ) : (
+              disputes.map((dispute) => (
+                <tr key={dispute.id} className="border-b border-hairline/70 align-top">
+                  <td className="p-3">
+                    <Link to={`/disputes/${dispute.id}`} className="font-semibold text-ink hover:text-seal">
+                      #{String(dispute.id).slice(0, 8)}
+                    </Link>
+                    <div className="mt-1 text-xs text-muted">{dispute.reason || 'No reason provided'}</div>
+                  </td>
+                  <td className="p-3 text-ink">
+                    {dispute.filer?.business_name || dispute.filer?.full_name || 'Unknown'}
+                  </td>
+                  <td className="p-3 text-ink">{Number(dispute.order?.amount || 0).toLocaleString('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 })}</td>
+                  <td className="p-3 text-ink">
+                    {dispute.order?.buyer?.business_name || dispute.order?.buyer?.full_name || 'Unknown'}
+                  </td>
+                  <td className="p-3 text-ink">
+                    {dispute.order?.seller?.business_name || dispute.order?.seller?.full_name || 'Unknown'}
+                  </td>
+                  <td className="p-3">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${dispute.status === 'resolved' ? 'bg-seal/10 text-seal' : dispute.status === 'under_review' ? 'bg-marigold/10 text-marigold-deep' : 'bg-ink/5 text-ink'}`}>
+                      {formatStatus(dispute.status)}
+                    </span>
+                  </td>
+                  <td className="p-3 text-ink">
+                    {dispute.judge?.business_name || dispute.judge?.full_name || 'Unassigned'}
+                  </td>
+                  <td className="p-3 text-muted">{formatAge(dispute.created_at)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 
