@@ -18,7 +18,7 @@ export default function Messages() {
   const [isMobileView, setIsMobileView] = useState(() => (
     typeof window !== 'undefined' && window.innerWidth < 768
   ))
-  const [mobileViewport, setMobileViewport] = useState({ height: 0, top: 0 })
+  const [mobileViewport, setMobileViewport] = useState({ height: 0, top: 0, keyboardOpen: false })
 
   // Detect mobile view on mount and on window resize
   useEffect(() => {
@@ -33,18 +33,24 @@ export default function Messages() {
 
   useEffect(() => {
     if (!isMobileView || !conversationId) {
-      setMobileViewport({ height: 0, top: 0 })
+      setMobileViewport({ height: 0, top: 0, keyboardOpen: false })
       return
     }
 
     const updateKeyboardOffset = () => {
       const viewport = window.visualViewport
       if (!viewport) {
-        setMobileViewport({ height: window.innerHeight, top: 0 })
+        setMobileViewport((current) => ({ ...current, height: window.innerHeight, top: 0 }))
         return
       }
 
-      setMobileViewport({ height: viewport.height, top: viewport.offsetTop })
+      const keyboardInset = window.innerHeight - viewport.height - viewport.offsetTop
+      setMobileViewport((current) => ({
+        height: viewport.height,
+        top: viewport.offsetTop,
+        keyboardOpen: current.inputFocused || keyboardInset > 100,
+        inputFocused: current.inputFocused,
+      }))
     }
 
     updateKeyboardOffset()
@@ -116,6 +122,16 @@ export default function Messages() {
             listingId={searchParams.get('listing')}
             isMobileFullscreen={showChatFullscreen}
             mobileViewport={mobileViewport}
+            onComposerFocus={() => setMobileViewport((current) => ({ ...current, keyboardOpen: true, inputFocused: true }))}
+            onComposerBlur={() => {
+              setMobileViewport((current) => ({ ...current, inputFocused: false }))
+              window.setTimeout(() => {
+                const viewport = window.visualViewport
+                if (!viewport) return
+                const keyboardInset = window.innerHeight - viewport.height - viewport.offsetTop
+                setMobileViewport((current) => ({ ...current, keyboardOpen: keyboardInset > 100 }))
+              }, 180)
+            }}
             onBackClick={() => navigate('/messages')}
           />
         ) : (
@@ -244,11 +260,12 @@ function ConversationList({ userId, activeId }) {
   )
 }
 
-function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscreen, mobileViewport, onBackClick }) {
+function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscreen, mobileViewport, onComposerFocus, onComposerBlur, onBackClick }) {
   const [items, setItems] = useState([])
   const [conversation, setConversation] = useState(null)
   const [activeListing, setActiveListing] = useState(null)
   const [body, setBody] = useState('')
+  const [composerFocused, setComposerFocused] = useState(false)
   const [sending, setSending] = useState(false)
   const [offerMode, setOfferMode] = useState(false)
   const [reportMode, setReportMode] = useState(false)
@@ -730,7 +747,7 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
       ) : (
         <form
           onSubmit={sendMessage}
-          className="shrink-0 border-t border-hairline bg-white px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:py-3 sm:pb-3"
+          className={`shrink-0 border-t border-hairline bg-white px-3 py-2 sm:py-3 sm:pb-3 ${isMobileFullscreen && (mobileViewport.keyboardOpen || composerFocused) ? 'pb-2' : 'pb-[calc(0.5rem+env(safe-area-inset-bottom))]'}`}
         >
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <input
@@ -753,6 +770,8 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
             <input
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onFocus={() => { setComposerFocused(true); onComposerFocus?.() }}
+              onBlur={() => { setComposerFocused(false); onComposerBlur?.() }}
               placeholder="Type a message…"
               className="flex-1 rounded-full bg-surfacealt px-3 sm:px-4 py-2 sm:py-2.5 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-seal focus:ring-offset-0"
             />
