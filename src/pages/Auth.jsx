@@ -186,28 +186,27 @@ export default function Auth() {
       </form>
 
       {mode === 'signin' && (
-        <>
-          <div className="mt-4 text-right">
+        <div className="mt-4 text-right">
             <Link to="/forgot-password" className="font-mono text-xs text-muted hover:text-seal">
               Forgot password?
             </Link>
-          </div>
-          <div className="my-5 flex items-center gap-3 text-xs text-muted">
-            <span className="h-px flex-1 bg-hairline" />
-            <span>or</span>
-            <span className="h-px flex-1 bg-hairline" />
-          </div>
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-full border border-hairline bg-white py-3 font-body text-sm font-semibold text-ink transition hover:border-seal hover:text-seal disabled:opacity-50"
-          >
-            <span className="font-display text-base font-bold">G</span>
-            Continue with Google
-          </button>
-        </>
+        </div>
       )}
+
+      <div className="my-5 flex items-center gap-3 text-xs text-muted">
+        <span className="h-px flex-1 bg-hairline" />
+        <span>{mode === 'signin' ? 'or log in with' : 'or sign up with'}</span>
+        <span className="h-px flex-1 bg-hairline" />
+      </div>
+      <button
+        type="button"
+        onClick={handleGoogleSignIn}
+        disabled={busy}
+        className="flex w-full items-center justify-center gap-2 rounded-full border border-hairline bg-white py-3 font-body text-sm font-semibold text-ink transition hover:border-seal hover:text-seal disabled:opacity-50"
+      >
+        <span className="font-display text-base font-bold">G</span>
+        {mode === 'signin' ? 'Continue with Google' : 'Sign up with Google'}
+      </button>
 
       <button
         onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); setInfo('') }}
