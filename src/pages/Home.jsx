@@ -23,9 +23,24 @@ function imageUrl(value) {
   return /^https?:\/\//i.test(image) ? image : supabase.storage.from('listing-images').getPublicUrl(image).data.publicUrl
 }
 
+function getTrustScore(listing) {
+  const seller = listing.seller || {}
+  const createdAt = new Date(listing.created_at).getTime()
+  const ageDays = Number.isFinite(createdAt) ? Math.max(0, (Date.now() - createdAt) / 86400000) : 365
+  const freshness = Math.max(0, 12 - ageDays / 3)
+  const completedSales = Math.min(24, Math.log2(Number(seller.completed_sales_count || 0) + 1) * 5)
+  return (seller.verified_seller ? 40 : 0)
+    + Math.max(0, Number(seller.seller_level || 0)) * 8
+    + Math.max(0, Number(seller.avg_rating || 0)) * 4
+    + completedSales
+    + (seller.pro_vendor ? 8 : 0)
+    + freshness
+}
+
 function ListingTile({ listing, badge }) {
   const image = imageUrl(listing.images)
   const price = listing.product_type === 'digital_service' ? listing.basicPrice ?? listing.price : listing.price
+  const SellerTrustIcon = listing.seller?.verified_seller ? ShieldCheck : BriefcaseBusiness
   return (
     <Link to={`/listing/${listing.slug}`} className="group block min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:border-emerald-700/40 hover:shadow-lg">
       <div className="relative aspect-[1.22] overflow-hidden bg-slate-100">
@@ -35,7 +50,7 @@ function ListingTile({ listing, badge }) {
       <div className="p-2.5">
         <p className="truncate text-[11px] font-semibold text-slate-800">{listing.title}</p>
         <p className="mt-1 truncate text-xs font-bold text-emerald-800">{listing.product_type === 'digital_service' ? 'From ' : ''}₦{Number(price || 0).toLocaleString()}</p>
-        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-500"><ShieldCheck size={11} className="text-emerald-700" />{listing.seller?.business_name || listing.category || 'Trustall seller'}</div>
+        <div className={`mt-1.5 flex items-center gap-1 text-[10px] ${listing.seller?.verified_seller ? 'font-semibold text-emerald-800' : 'text-slate-500'}`}><SellerTrustIcon size={11} className={listing.seller?.verified_seller ? 'text-emerald-700' : 'text-slate-400'} />{listing.seller?.verified_seller ? 'Verified seller' : listing.seller?.business_name || listing.category || 'Trustall seller'}</div>
       </div>
     </Link>
   )
@@ -62,27 +77,80 @@ function ProductSection({ title, subtitle, listings, badge, to = '/browse', icon
 export default function Home() {
   const [listings, setListings] = useState([])
   const [sellers, setSellers] = useState([])
+  const [loadingMarketplace, setLoadingMarketplace] = useState(true)
+  const [marketplaceError, setMarketplaceError] = useState('')
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
     let active = true
     async function loadMarketplace() {
-      const [{ data: rows }, { data: profiles }, { data: packages }] = await Promise.all([
-        supabase.from('listings').select('id, slug, title, category, product_type, images, price, created_at, seller_id').eq('is_active', true).order('created_at', { ascending: false }).limit(40),
-        supabase.from('profiles').select('id, business_name, full_name, handle, avatar_url, verified_seller, state, avg_rating, completed_sales_count').eq('is_seller', true).order('completed_sales_count', { ascending: false }).limit(8),
-        supabase.from('service_packages').select('listing_id, tier, price').eq('tier', 'basic'),
-      ])
-      if (!active) return
-      const sellerIds = [...new Set((rows || []).map((row) => row.seller_id).filter(Boolean))]
-      const { data: listingSellers } = sellerIds.length
-        ? await supabase.from('profiles').select('id, business_name, verified_seller').in('id', sellerIds)
-        : { data: [] }
-      if (!active) return
-      const sellerById = new Map((listingSellers || []).map((seller) => [seller.id, seller]))
-      const priceByListing = new Map((packages || []).map((row) => [row.listing_id, row.price]))
-      setListings((rows || []).map((row) => ({ ...row, seller: sellerById.get(row.seller_id), basicPrice: priceByListing.get(row.id) })))
-      setSellers(profiles || [])
+      setLoadingMarketplace(true)
+      setMarketplaceError('')
+      try {
+        const [{ data: rows, error: listingsError }, { data: packages }, { data: sellerProfiles }] = await Promise.all([
+          supabase.from('listings').select('id, slug, title, description, category, product_type, status, is_active, images, price, created_at, seller_id').eq('is_active', true).order('created_at', { ascending: false }).range(0, 199),
+          supabase.from('service_packages').select('listing_id, tier, price').eq('tier', 'basic'),
+          supabase.from('profiles').select('id, business_name, full_name, handle, avatar_url, verified_seller, seller_level, pro_vendor, is_seller, status, state, avg_rating, completed_sales_count').eq('is_seller', true).eq('status', 'active').order('verified_seller', { ascending: false }).order('completed_sales_count', { ascending: false }).limit(20),
+        ])
+        if (listingsError) throw listingsError
+        if (!active) return
+
+        const sellerIds = [...new Set((rows || []).map((row) => row.seller_id).filter(Boolean))]
+        const { data: listingSellers, error: sellersError } = sellerIds.length
+          ? await supabase.from('profiles').select('id, business_name, full_name, handle, avatar_url, verified_seller, seller_level, pro_vendor, is_seller, status, state, avg_rating, completed_sales_count').in('id', sellerIds)
+          : { data: [], error: null }
+        if (sellersError) throw sellersError
+        if (!active) return
+
+        const sellerById = new Map((listingSellers || []).map((seller) => [seller.id, seller]))
+        const priceByListing = new Map((packages || []).map((row) => [row.listing_id, row.price]))
+        const publicListings = (rows || [])
+          .filter((row) => row.product_type !== 'digital_service' || row.status === 'published')
+          .map((row) => ({ ...row, seller: sellerById.get(row.seller_id), basicPrice: priceByListing.get(row.id) }))
+          .filter((row) => row.seller && row.seller.status !== 'suspended')
+
+        let rankedOrder = new Map()
+        const { data: rankedRows, error: rankingError } = await supabase.rpc('search_listings_ranked', {
+          p_query: null,
+          p_category: null,
+          p_limit: 200,
+          p_offset: 0,
+        })
+        if (!rankingError && Array.isArray(rankedRows)) {
+          rankedOrder = new Map(rankedRows.map((row, index) => [row.id, index]))
+        } else if (rankingError) {
+          console.info('Trustall ranked listing search unavailable; using marketplace trust signals.', rankingError.message)
+        }
+
+        const rankedListings = publicListings.sort((first, second) => {
+          const firstRank = rankedOrder.get(first.id)
+          const secondRank = rankedOrder.get(second.id)
+          if (firstRank !== undefined || secondRank !== undefined) {
+            return (firstRank ?? Number.MAX_SAFE_INTEGER) - (secondRank ?? Number.MAX_SAFE_INTEGER)
+          }
+          return getTrustScore(second) - getTrustScore(first)
+            || new Date(second.created_at).getTime() - new Date(first.created_at).getTime()
+        }).filter((listing, index, allListings) => {
+          const normalizedTitle = String(listing.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+          return allListings.findIndex((candidate) => (
+            candidate.seller_id === listing.seller_id
+            && String(candidate.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === normalizedTitle
+          )) === index
+        })
+        const activeSellerIds = new Set(publicListings.map((listing) => listing.seller_id))
+        setListings(rankedListings)
+        setSellers((sellerProfiles || []).filter((seller) => activeSellerIds.has(seller.id)))
+      } catch (error) {
+        console.error('Trustall marketplace homepage failed to load:', error)
+        if (active) {
+          setListings([])
+          setSellers([])
+          setMarketplaceError('Marketplace listings could not load. Please try again shortly.')
+        }
+      } finally {
+        if (active) setLoadingMarketplace(false)
+      }
     }
     loadMarketplace()
     return () => { active = false }
@@ -90,6 +158,10 @@ export default function Home() {
 
   const products = listings.filter((listing) => listing.product_type !== 'digital_service')
   const services = listings.filter((listing) => listing.product_type === 'digital_service')
+  const featuredListings = listings.slice(0, 5)
+  const featuredIds = new Set(featuredListings.map((listing) => listing.id))
+  const popularProducts = products.filter((listing) => !featuredIds.has(listing.id)).slice(0, 4)
+  const featuredServices = services.filter((listing) => !featuredIds.has(listing.id)).slice(0, 4)
   const submitSearch = (event) => {
     event.preventDefault()
     const value = search.trim()
@@ -129,18 +201,21 @@ export default function Home() {
         </div>
       </section>
 
-      <ProductSection title="Featured on Trustall" subtitle="Top picks handpicked for you. Quality products and trusted sellers." listings={products.slice(0, 5)} badge="Featured" icon={Sparkles} />
-      <ProductSection title="Recommended for you" subtitle="Based on popular products and trusted sellers." listings={products.slice(5, 10).length ? products.slice(5, 10) : products.slice(0, 5)} badge="Popular" icon={Heart} />
+      {marketplaceError && <p role="alert" className="mx-auto max-w-6xl px-4 py-4 text-sm text-red-700 sm:px-6">{marketplaceError}</p>}
+      {loadingMarketplace && listings.length === 0 && <p className="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500 sm:px-6">Finding trusted listings…</p>}
+      {!loadingMarketplace && !marketplaceError && listings.length === 0 && <p className="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500 sm:px-6">No live listings yet. Check back soon for trusted products and services.</p>}
+
+      <ProductSection title="Picked for trust" subtitle="Ranked by Trustall search, with seller verification, track record, ratings, and recency as fallback signals." listings={featuredListings} badge="Trustall pick" icon={ShieldCheck} />
 
       <section className="mx-auto max-w-6xl px-4 py-7 sm:px-6">
         <div className="grid gap-8 lg:grid-cols-2">
           <div>
             <div className="mb-4 flex items-end justify-between"><div><h2 className="font-display text-lg font-bold text-slate-900">Popular products</h2><p className="text-xs text-slate-500">Trending finds loved by the Trustall community.</p></div><Link to="/browse" className="flex items-center text-xs font-semibold text-emerald-800">View all <ChevronRight size={15} /></Link></div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{products.slice(10, 14).map((listing) => <ListingTile key={listing.id} listing={listing} />)}</div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{popularProducts.map((listing) => <ListingTile key={listing.id} listing={listing} badge="Trusted seller" />)}</div>
           </div>
           <div className="border-t border-slate-200 pt-6 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
             <div className="mb-4 flex items-end justify-between"><div><h2 className="font-display text-lg font-bold text-slate-900">Featured services</h2><p className="text-xs text-slate-500">Skilled professionals ready to help you.</p></div><Link to="/browse?category=Services" className="flex items-center text-xs font-semibold text-emerald-800">View all <ChevronRight size={15} /></Link></div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{services.slice(0, 4).map((listing) => <ListingTile key={listing.id} listing={listing} badge="Service" />)}</div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{featuredServices.map((listing) => <ListingTile key={listing.id} listing={listing} badge="Service" />)}</div>
           </div>
         </div>
       </section>
