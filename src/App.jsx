@@ -105,6 +105,16 @@ function GlobalSetup() {
   return null
 }
 
+function HomeEntry() {
+  const { session, loading } = useProfile()
+
+  if (loading) {
+    return <div className="flex min-h-[60vh] items-center justify-center text-sm text-muted">Checking your account…</div>
+  }
+
+  return session?.user?.id ? <Home /> : <Auth />
+}
+
 export default function App() {
   const { pathname } = useLocation()
   const isAdminRoute = pathname.startsWith('/admin')
@@ -120,7 +130,7 @@ export default function App() {
             <ScrollToTop />
             <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center text-sm text-muted">Loading…</div>}>
               <Routes>
-                <Route path="/" element={<Home />} />
+                <Route path="/" element={<HomeEntry />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/terms" element={<Terms />} />
                 <Route path="/privacy" element={<Privacy />} />
