@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient.js'
 import { useSession } from '../lib/useProfile.js'
-import { PUBLIC_PROFILE_COLUMNS } from '../lib/profileFields.js'
 import { SealMark } from '../components/Navbar.jsx'
 import { LoadingState, NotFound, DataError } from '../components/ErrorBoundary.jsx'
 import Seo from '../components/Seo.jsx'
@@ -86,7 +85,7 @@ export function BuyerProfile() {
         const lookupColumn = UUID_PATTERN.test(identifier) ? 'id' : 'handle'
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select(PUBLIC_PROFILE_COLUMNS)
+          .select('*')
           .eq(lookupColumn, identifier)
           .maybeSingle()
 
@@ -276,7 +275,7 @@ export default function SellerProfile() {
         const lookupColumn = UUID_PATTERN.test(identifier) ? 'id' : 'handle'
         const { data, error: profileError } = await supabase
           .from('profiles')
-          .select(PUBLIC_PROFILE_COLUMNS)
+          .select('*')
           .eq(lookupColumn, identifier)
           .maybeSingle()
         if (profileError) throw profileError

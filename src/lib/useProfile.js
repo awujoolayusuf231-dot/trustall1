@@ -61,27 +61,19 @@ export function useProfile() {
     setProfile(null)
     setLoading(true)
 
-    // Private fields (wallet, payout codes, referral code) are only readable through
-    // get_my_profile; phone numbers live in profile_contacts. Both are owner-only.
-    Promise.all([
-      supabase.rpc('get_my_profile').maybeSingle(),
-      supabase
-        .from('profile_contacts')
-        .select('phone')
-        .eq('id', session.user.id)
-        .maybeSingle(),
-    ])
-      .then(([{ data, error }, { data: contact, error: contactError }]) => {
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
         if (!isMounted) return
 
         if (error && error.code !== 'PGRST116') {
           console.warn('Profile lookup failed:', error)
         }
-        if (contactError && contactError.code !== 'PGRST116') {
-          console.warn('Contact details lookup failed:', contactError)
-        }
 
-        setProfile(data ? { ...data, phone: contact?.phone ?? null } : null)
+        setProfile(data ?? null)
         setProfileUserId(session.user.id)
       })
       .catch((error) => {

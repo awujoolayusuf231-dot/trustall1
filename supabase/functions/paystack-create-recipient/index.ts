@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { TOO_MANY_REQUESTS, withinRateLimit } from "../_shared/rateLimit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,9 +49,6 @@ Deno.serve(async (request) => {
     }
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
-    if (!(await withinRateLimit(admin, `recipient:${user.id}`, 5, 3600))) {
-      return jsonResponse({ error: TOO_MANY_REQUESTS }, 429);
-    }
     const { data: profile, error: profileError } = await admin
       .from("profiles")
       .select("business_name, full_name, paystack_recipient_code")
