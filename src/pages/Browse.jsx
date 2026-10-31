@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Bookmark, BookmarkCheck, Trash2 } from 'lucide-react'
 import { useProfile } from '../lib/useProfile.js'
+import { getProfileInitials } from '../lib/profileDisplay.js'
 import { supabase } from '../lib/supabaseClient.js'
 import { clearRecentlyViewed, loadRecentlyViewed, loadSavedListingIds, saveListing, unsaveListing } from '../lib/listingFeatures.js'
 import Seo from '../components/Seo.jsx'
@@ -179,7 +180,7 @@ export default function Browse() {
     }, {})
     const sellerIds = [...new Set(allRows.map((listing) => listing.seller_id).filter(Boolean))]
     const { data: sellers } = sellerIds.length > 0
-      ? await supabase.from('profiles').select('id, business_name, handle, state, verified_seller, seller_level, pro_vendor, completed_sales_count, avg_rating, avatar_url').in('id', sellerIds)
+      ? await supabase.from('profiles').select('id, business_name, full_name, handle, state, verified_seller, seller_level, pro_vendor, completed_sales_count, avg_rating, avatar_url').in('id', sellerIds)
       : { data: [] }
     const sellerById = new Map((sellers || []).map((seller) => [seller.id, seller]))
     const promotionByListing = new Map(promotions.map((promotion) => [promotion.target_id, promotion]))
@@ -373,7 +374,7 @@ export default function Browse() {
               </div>
               <div className="mt-3 flex min-w-0 items-center gap-2 md:gap-2.5">
                 <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-inksoft font-display text-[10px] font-bold text-surface md:h-10 md:w-10 md:text-xs">
-                  {l.seller?.avatar_url ? <img src={l.seller.avatar_url} alt={l.seller.business_name || 'Seller'} className="h-full w-full object-cover" /> : (l.seller?.business_name || '?').slice(0, 2).toUpperCase()}
+                  {l.seller?.avatar_url ? <img src={l.seller.avatar_url} alt={l.seller.business_name || l.seller.full_name || 'Seller'} className="h-full w-full object-cover" /> : getProfileInitials(l.seller, null, 'S')}
                 </div>
                 <div className="flex min-w-0 flex-1 items-center justify-between gap-1 md:gap-2">
                   <div className="min-w-0"><span className="block truncate text-[10px] text-muted md:text-xs">{l.seller?.business_name}</span>{l.seller?.avg_rating ? <span className="mt-0.5 block truncate font-mono text-[9px] text-marigold-deep md:text-[10px]">{Number(l.seller.avg_rating).toFixed(1)}★ rating</span> : <span className="mt-0.5 block truncate font-mono text-[9px] text-muted md:text-[10px]">No reviews yet</span>}</div>

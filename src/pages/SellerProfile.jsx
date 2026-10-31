@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient.js'
 import { useSession } from '../lib/useProfile.js'
 import { PUBLIC_PROFILE_COLUMNS } from '../lib/profileFields.js'
+import { getProfileInitials } from '../lib/profileDisplay.js'
 import { SealMark } from '../components/Navbar.jsx'
 import { LoadingState, NotFound, DataError } from '../components/ErrorBoundary.jsx'
 import Seo from '../components/Seo.jsx'
@@ -183,7 +184,7 @@ export function BuyerProfile() {
             {buyer.avatar_url ? (
               <img src={buyer.avatar_url} alt={buyer.full_name || 'Profile'} className="h-full w-full object-cover" />
             ) : (
-              (buyer.full_name || buyer.business_name || '?').slice(0, 2).toUpperCase()
+              getProfileInitials(buyer, null, 'B')
             )}
           </div>
           <div>
@@ -215,7 +216,7 @@ export function BuyerProfile() {
                         {review.reviewer?.avatar_url ? (
                           <img src={review.reviewer.avatar_url} alt={review.reviewer?.business_name || 'Seller'} className="h-full w-full object-cover" />
                         ) : (
-                          (review.reviewer?.business_name || review.reviewer?.full_name || '?').slice(0, 2).toUpperCase()
+                          getProfileInitials(review.reviewer, null, 'U')
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -533,12 +534,12 @@ export default function SellerProfile() {
               {seller.avatar_url ? (
                 <img src={seller.avatar_url} alt={seller.business_name || 'Profile'} className="h-full w-full object-cover" />
               ) : (
-                (seller.business_name || '?').slice(0, 2).toUpperCase()
+                getProfileInitials(seller, null, 'S')
               )}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl font-bold text-ink sm:text-3xl">{seller.business_name}</h1>
+                <h1 className="font-display text-2xl font-bold text-ink sm:text-3xl">{seller.business_name || seller.full_name || 'Trustall seller'}</h1>
                 {seller.verified_seller && <SealMark size={18} />}
               </div>
               <p className="font-mono text-xs text-muted">
@@ -644,7 +645,7 @@ export default function SellerProfile() {
                       {review.reviewer?.avatar_url ? (
                         <img src={review.reviewer.avatar_url} alt={review.reviewer?.full_name || 'Buyer'} className="h-full w-full object-cover" />
                       ) : (
-                        (review.reviewer?.business_name || review.reviewer?.full_name || '?').slice(0, 2).toUpperCase()
+                        getProfileInitials(review.reviewer, null, 'U')
                       )}
                     </div>
                     <div className="flex-1 min-w-0">

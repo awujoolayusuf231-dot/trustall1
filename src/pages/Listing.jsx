@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { Bookmark, BookmarkCheck } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient.js'
 import { useSession } from '../lib/useProfile.js'
+import { getProfileInitials } from '../lib/profileDisplay.js'
 import { SealMark } from '../components/Navbar.jsx'
 import { LoadingState, NotFound, DataError } from '../components/ErrorBoundary.jsx'
 import { loadSavedListingIds, saveListing, unsaveListing } from '../lib/listingFeatures.js'
@@ -119,7 +120,7 @@ export default function Listing() {
         
         const { data, error: fetchError } = await supabase
           .from('listings')
-          .select('*, seller:seller_id(id, business_name, handle, state, verified_seller, seller_level, pro_vendor, avg_rating, completed_sales_count)')
+          .select('*, seller:seller_id(id, business_name, full_name, handle, state, verified_seller, seller_level, pro_vendor, avg_rating, completed_sales_count)')
           .eq('slug', slug)
           .maybeSingle()
 
@@ -430,7 +431,7 @@ export default function Listing() {
             className="mt-6 flex items-center gap-3 rounded-xl border border-hairline bg-white p-4 transition hover:border-seal"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-inksoft font-display text-sm font-bold text-surface">
-              {(listing.seller?.business_name || '?').slice(0, 2).toUpperCase()}
+              {getProfileInitials(listing.seller, null, 'S')}
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-1.5">

@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { useProfile } from '../lib/useProfile.js'
 import { supabase } from '../lib/supabaseClient.js'
+import { getProfileInitials } from '../lib/profileDisplay.js'
 import { NotificationBell } from './NotificationBell.jsx'
 
 function getAvatarUrl(profile) {
@@ -59,7 +60,7 @@ function MobileNavIcon({ type, active }) {
   )
 }
 
-function AccountMenu({ profile }) {
+function AccountMenu({ profile, user }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const isSellerAccount = isSellerProfile(profile)
@@ -81,7 +82,7 @@ function AccountMenu({ profile }) {
         {getAvatarUrl(profile) ? (
           <img src={getAvatarUrl(profile)} alt="Profile" className="h-full w-full object-cover" />
         ) : (
-          (profile?.business_name || profile?.full_name || '?').slice(0, 2).toUpperCase()
+          getProfileInitials(profile, user, isSellerAccount ? 'S' : 'B')
         )}
       </button>
       {open && (
@@ -272,7 +273,7 @@ export default function Navbar() {
           )}
           {session && <NotificationBell userId={session.user.id} />}
           {session ? (
-            <AccountMenu profile={profile} />
+            <AccountMenu profile={profile} user={session.user} />
           ) : (
             <Link
               to="/auth"

@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient.js'
 import { useProfile } from '../lib/useProfile.js'
 import { useRole } from '../lib/RoleContext.jsx'
+import { getProfileInitials } from '../lib/profileDisplay.js'
 import Sell from './Sell.jsx'
 
 export function OrderManagement() {
@@ -415,7 +416,7 @@ export function SellerDashboard() {
                       {review.reviewee?.avatar_url ? (
                         <img src={review.reviewee.avatar_url} alt={review.reviewee?.full_name || 'Buyer'} className="h-full w-full object-cover" />
                       ) : (
-                        (review.reviewee?.business_name || review.reviewee?.full_name || '?').slice(0, 2).toUpperCase()
+                        getProfileInitials(review.reviewee, null, 'B')
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -740,7 +741,7 @@ export function BuyerDashboard() {
                 {/* Seller Profile Card - For Buyer View */}
                 <Link to={`/seller/${order.seller?.id || order.seller?.handle}`} className="flex items-center gap-3 rounded-xl border border-hairline bg-white p-3 hover:border-seal hover:shadow-sm transition lg:flex-shrink-0 w-full sm:w-auto sm:min-w-[240px]">
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-seal/10 border border-seal/20 font-display text-xs font-bold text-seal">
-                    {order.seller?.business_name?.[0] || '?'}
+                    {getProfileInitials(order.seller, null, 'S')}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-display text-xs sm:text-sm font-bold text-ink truncate">{order.seller?.business_name || 'Seller'}</p>
@@ -831,7 +832,7 @@ export function BuyerDashboard() {
                       {review.reviewee?.avatar_url ? (
                         <img src={review.reviewee.avatar_url} alt={review.reviewee?.business_name || 'Seller'} className="h-full w-full object-cover" />
                       ) : (
-                        (review.reviewee?.business_name || '?').slice(0, 2).toUpperCase()
+                        getProfileInitials(review.reviewee, null, 'S')
                       )}
                     </div>
                     <div className="flex-1 min-w-0">

@@ -2,6 +2,7 @@
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient.js'
 import { useProfile } from '../lib/useProfile.js'
+import { getProfileInitials } from '../lib/profileDisplay.js'
 import { markConversationRead, subscribeToMessageReadUpdates } from '../lib/readReceiptUtils.js'
 import { SealMark } from '../components/Navbar.jsx'
 import { isOnline, formatLastSeen, subscribeToUserPresence } from '../lib/presenceUtils.js'
@@ -230,7 +231,7 @@ function ConversationList({ userId, activeId }) {
               {other.avatar_url ? (
                 <img src={other.avatar_url} alt={otherName} className="h-full w-full object-cover" />
               ) : (
-                otherName.slice(0, 2).toUpperCase()
+                getProfileInitials(other, null, isSeller ? 'B' : 'S')
               )}
             </div>
 
@@ -650,7 +651,7 @@ function Thread({ conversationId, userId, userEmail, listingId, isMobileFullscre
             {other.avatar_url ? (
               <img src={other.avatar_url} alt={other.business_name || other.full_name} loading="lazy" className="h-full w-full object-cover" />
             ) : (
-              (other.business_name || other.full_name || '?').slice(0, 2).toUpperCase()
+              getProfileInitials(other, null, isSeller ? 'B' : 'S')
             )}
           </div>
           {/* Name and Badge */}
