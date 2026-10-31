@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient.js'
+import { isProfileRpcUnavailable, PUBLIC_PROFILE_COLUMNS } from './profileFields.js'
 
 export function useSession() {
   const [session, setSession] = useState(null)
@@ -47,41 +48,56 @@ export function useProfile() {
   const [profile, setProfile] = useState(null)
   const [profileUserId, setProfileUserId] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [profileError, setProfileError] = useState(null)
 
   useEffect(() => {
     if (sessionLoading) return
     if (!session) {
       setProfile(null)
       setProfileUserId(null)
+      setProfileError(null)
       setLoading(false)
       return
     }
 
     let isMounted = true
     setProfile(null)
+    setProfileError(null)
     setLoading(true)
 
-    // Private fields (wallet, payout codes, referral code) are only readable through
-    // get_my_profile; phone numbers live in profile_contacts. Both are owner-only.
-    Promise.all([
-      supabase.rpc('get_my_profile').maybeSingle(),
-      supabase
+    async function loadProfile() {
+      const [{ data: rpcProfile, error: rpcError }, { data: contact, error: contactError }] = await Promise.all([
+        supabase.rpc('get_my_profile').maybeSingle(),
+        supabase
         .from('profile_contacts')
         .select('phone')
         .eq('id', session.user.id)
         .maybeSingle(),
-    ])
-      .then(([{ data, error }, { data: contact, error: contactError }]) => {
+      ])
+
+      if (contactError && contactError.code !== 'PGRST116') {
+        console.warn('Contact details lookup failed:', contactError)
+      }
+
+      if (!rpcError) return { profile: rpcProfile, phone: contact?.phone ?? null }
+      if (!isProfileRpcUnavailable(rpcError)) throw rpcError
+
+      console.warn('Private profile RPC is unavailable; loading public profile fields only.')
+      const { data: publicProfile, error: publicProfileError } = await supabase
+        .from('profiles')
+        .select(PUBLIC_PROFILE_COLUMNS)
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      if (publicProfileError) throw publicProfileError
+      return { profile: publicProfile, phone: contact?.phone ?? null }
+    }
+
+    loadProfile()
+      .then(({ profile: loadedProfile, phone }) => {
         if (!isMounted) return
 
-        if (error && error.code !== 'PGRST116') {
-          console.warn('Profile lookup failed:', error)
-        }
-        if (contactError && contactError.code !== 'PGRST116') {
-          console.warn('Contact details lookup failed:', contactError)
-        }
-
-        setProfile(data ? { ...data, phone: contact?.phone ?? null } : null)
+        setProfile(loadedProfile ? { ...loadedProfile, phone } : null)
         setProfileUserId(session.user.id)
       })
       .catch((error) => {
@@ -89,6 +105,7 @@ export function useProfile() {
         console.error('Profile load failed:', error)
         setProfile(null)
         setProfileUserId(session.user.id)
+        setProfileError(error)
       })
       .finally(() => {
         if (isMounted) setLoading(false)
@@ -105,6 +122,7 @@ export function useProfile() {
     session,
     profile: profileMatchesSession ? profile : null,
     setProfile,
+    error: profileError,
     loading: sessionLoading || loading || Boolean(session?.user?.id && !profileMatchesSession),
   }
 }

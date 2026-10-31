@@ -4,7 +4,7 @@ import { useProfile } from './useProfile.js'
 const RoleContext = createContext(null)
 
 export function RoleProvider({ children }) {
-  const { session, profile, loading } = useProfile()
+  const { session, profile, loading, error } = useProfile()
 
   const roleData = useMemo(() => {
     if (!session) {
@@ -15,6 +15,7 @@ export function RoleProvider({ children }) {
         loading: false,
         session,
         profile,
+        error,
       }
     }
 
@@ -37,8 +38,9 @@ export function RoleProvider({ children }) {
       loading,
       session,
       profile,
+      error,
     }
-  }, [loading, session, profile])
+  }, [loading, session, profile, error])
 
   return (
     <RoleContext.Provider value={roleData}>
@@ -55,5 +57,6 @@ export function useRole() {
     loading: true,
     session: null,
     profile: null,
+    error: null,
   }
 }

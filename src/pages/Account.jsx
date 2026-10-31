@@ -14,7 +14,7 @@ async function uploadAvatar(file, userId) {
 }
 
 export default function Account() {
-  const { session, profile, loading, isSeller } = useRole()
+  const { session, profile, loading, isSeller, error: profileError } = useRole()
   const navigate = useNavigate()
   const [avatarPreview, setAvatarPreview] = useState(profile?.avatar_url || null)
   const [uploading, setUploading] = useState(false)
@@ -59,8 +59,21 @@ export default function Account() {
     }
   }
 
-  if (loading || !profile) return <div className="px-6 py-24 text-center text-muted">Loading your profile…</div>
+  if (loading) return <div className="px-6 py-24 text-center text-muted">Loading your profile…</div>
   if (!session) return <div className="px-6 py-24 text-center text-muted">Redirecting to sign in…</div>
+  if (profileError || !profile) {
+    return (
+      <section className="mx-auto max-w-xl px-6 py-24 text-center">
+        <h1 className="font-display text-2xl font-bold text-ink">Your profile could not be loaded</h1>
+        <p role="alert" className="mt-3 text-sm text-muted">
+          {profileError?.message || 'No profile record is available for this account.'}
+        </p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-5 rounded-full bg-seal px-5 py-2.5 text-sm font-semibold text-white">
+          Try again
+        </button>
+      </section>
+    )
+  }
   if (isSeller) return <Navigate replace to={`/seller/${encodeURIComponent(profile.handle || profile.id)}`} />
 
   const displayName = profile.full_name || profile.business_name || 'Your profile'
