@@ -12,37 +12,46 @@ create table if not exists private.applied_migrations (
   applied_at timestamptz not null default now()
 );
 
--- Existing database built before history was tracked: record what was already applied.
+-- Existing database built before history was tracked: record the early
+-- migrations whose marker objects exist. Missing ones run below, in order.
 do $bundle$
+declare
+  v_recorded integer;
 begin
   if to_regclass('public.profiles') is not null
      and not exists (select 1 from private.applied_migrations) then
-    insert into private.applied_migrations (name) values
-      ('0001_init_marketplace_schema.sql'),
-      ('0002_levels_escrow_digital_referral.sql'),
-      ('0003_triggers_and_referral_logic.sql'),
-      ('0004_conversation_read_state.sql'),
-      ('0005_avatar_storage.sql'),
-      ('0006_conversation_last_read.sql'),
-      ('0007_bidir_reviews_and_dashboard_analytics.sql'),
-      ('0008_offer_delivery_logistics.sql'),
-      ('0009_admin_verification_realtime.sql'),
-      ('0011_offer_delivery_fields.sql'),
-      ('0012_add_offer_variants_and_services.sql'),
-      ('0013_add_services_included_to_listings.sql'),
-      ('0014_notifications_system.sql'),
-      ('0015_fix_offer_delivery_columns.sql'),
-      ('0016_order_lifecycle_notifications_and_wallet.sql'),
-      ('0017_message_attachments.sql'),
-      ('0019_message_attachments_bucket.sql'),
-      ('0021_admin_dashboard_audit.sql'),
-      ('0022_mark_profile_as_seller_on_listing.sql'),
-      ('0023_dispute_notifications.sql'),
-      ('0024_admin_targeted_notifications.sql'),
-      ('0025_conversation_read_state_rpc.sql'),
-      ('0026_share_offer_delivery_address.sql'),
-      ('0027_paystack_transfer_recipients.sql');
-    raise notice 'Recorded % migrations that were applied before history was tracked', 24;
+    insert into private.applied_migrations (name)
+    select legacy.name from (values
+      ('0001_init_marketplace_schema.sql', to_regclass('public.profiles') is not null),
+      ('0002_levels_escrow_digital_referral.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'handle')),
+      ('0003_triggers_and_referral_logic.sql', exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'generate_referral_code')),
+      ('0004_conversation_read_state.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'last_seen_at')),
+      ('0005_avatar_storage.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'business_logo_url')),
+      ('0006_conversation_last_read.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'conversations' and column_name = 'seller_last_read_at')),
+      ('0007_bidir_reviews_and_dashboard_analytics.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'buyer_avg_rating')),
+      ('0008_offer_delivery_logistics.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'offers' and column_name = 'delivery_speed')),
+      ('0009_admin_verification_realtime.sql', exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'verification_requests')),
+      ('0010_chat_presence_and_read_receipts.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'messages' and column_name = 'is_read')),
+      ('0011_offer_delivery_fields.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'offers' and column_name = 'delivery_type')),
+      ('0012_add_offer_variants_and_services.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'offers' and column_name = 'variants')),
+      ('0013_add_services_included_to_listings.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'listings' and column_name = 'services_included')),
+      ('0014_notifications_system.sql', to_regclass('public.notifications') is not null),
+      ('0016_order_lifecycle_notifications_and_wallet.sql', exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'record_payment_as_pending')),
+      ('0017_message_attachments.sql', to_regclass('public.message_attachments') is not null),
+      ('0018_fix_offer_and_order_notifications.sql', exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'notify_order_confirmed')),
+      ('0019_message_attachments_bucket.sql', exists (select 1 from storage.buckets where id = 'message-attachments')),
+      ('0020_disputes_table.sql', to_regclass('public.disputes') is not null),
+      ('0021_admin_dashboard_audit.sql', exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'get_admin_dashboard')),
+      ('0022_mark_profile_as_seller_on_listing.sql', exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'mark_profile_as_seller_on_listing')),
+      ('0023_dispute_notifications.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'notifications' and column_name = 'related_dispute_id')),
+      ('0024_admin_targeted_notifications.sql', exists (select 1 from pg_policies where policyname = 'Admins can insert marketing notifications')),
+      ('0025_conversation_read_state_rpc.sql', exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'mark_conversation_read')),
+      ('0026_share_offer_delivery_address.sql', exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'share_offer_delivery_address')),
+      ('0027_paystack_transfer_recipients.sql', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'paystack_recipient_code'))
+    ) as legacy(name, present)
+    where legacy.present;
+    get diagnostics v_recorded = row_count;
+    raise notice 'Recorded % of % early migrations as already applied', v_recorded, 26;
   end if;
 end
 $bundle$;
@@ -505,9 +514,13 @@ alter table public.profiles
   add column if not exists business_logo_url text;
 
 insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true) on conflict (id) do nothing;
+drop policy if exists "Users upload own avatars" on storage.objects;
 create policy "Users upload own avatars" on storage.objects for insert with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "Public can view avatars" on storage.objects;
 create policy "Public can view avatars" on storage.objects for select using (bucket_id = 'avatars');
+drop policy if exists "Users update own avatars" on storage.objects;
 create policy "Users update own avatars" on storage.objects for update using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "Users delete own avatars" on storage.objects;
 create policy "Users delete own avatars" on storage.objects for delete using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 $m0005$;
   insert into private.applied_migrations (name) values ('0005_avatar_storage.sql');
@@ -644,22 +657,26 @@ create trigger trg_on_review_updated after update on public.reviews for each row
 alter table public.reviews enable row level security;
 
 drop policy if exists "Buyers review only confirmed orders" on public.reviews;
+drop policy if exists "Buyers review seller after confirmation" on public.reviews;
 create policy "Buyers review seller after confirmation" on public.reviews for insert with check (
   reviewer_id = auth.uid()
   and review_type = 'buyer_to_seller'
   and exists (select 1 from public.orders o where o.id = order_id and o.buyer_id = auth.uid() and o.status = 'confirmed')
 );
 
+drop policy if exists "Sellers review buyer after confirmation" on public.reviews;
 create policy "Sellers review buyer after confirmation" on public.reviews for insert with check (
   reviewer_id = auth.uid()
   and review_type = 'seller_to_buyer'
   and exists (select 1 from public.orders o where o.id = order_id and o.seller_id = auth.uid() and o.status = 'confirmed')
 );
 
+drop policy if exists "Users view their reviews" on public.reviews;
 create policy "Users view their reviews" on public.reviews for select using (
   reviewer_id = auth.uid() or seller_id = auth.uid() or buyer_id = auth.uid() or public.is_admin() or true
 );
 
+drop policy if exists "Users update own reviews" on public.reviews;
 create policy "Users update own reviews" on public.reviews for update using (reviewer_id = auth.uid() or public.is_admin()) with check (reviewer_id = auth.uid() or public.is_admin());
 $m0007$;
   insert into private.applied_migrations (name) values ('0007_bidir_reviews_and_dashboard_analytics.sql');
@@ -1273,6 +1290,7 @@ alter table public.message_attachments enable row level security;
 create index if not exists idx_message_attachments_message_id
   on public.message_attachments (message_id);
 
+drop policy if exists "Participants view message attachments" on public.message_attachments;
 create policy "Participants view message attachments"
 on public.message_attachments for select
 using (
@@ -1286,6 +1304,7 @@ using (
   or public.is_admin()
 );
 
+drop policy if exists "Participants insert message attachments" on public.message_attachments;
 create policy "Participants insert message attachments"
 on public.message_attachments for insert
 with check (
@@ -1300,6 +1319,7 @@ with check (
   or public.is_admin()
 );
 
+drop policy if exists "Participants delete own message attachments" on public.message_attachments;
 create policy "Participants delete own message attachments"
 on public.message_attachments for delete
 using (
@@ -1314,10 +1334,12 @@ using (
   or public.is_admin()
 );
 
+drop policy if exists "Public read uploaded chat media" on storage.objects;
 create policy "Public read uploaded chat media"
 on storage.objects for select
 using (bucket_id = 'message-attachments');
 
+drop policy if exists "Authenticated users upload chat media" on storage.objects;
 create policy "Authenticated users upload chat media"
 on storage.objects for insert
 with check (
@@ -1325,11 +1347,13 @@ with check (
   and auth.uid() is not null
 );
 
+drop policy if exists "Authenticated users update their chat media" on storage.objects;
 create policy "Authenticated users update their chat media"
 on storage.objects for update
 using (bucket_id = 'message-attachments' and auth.uid() is not null)
 with check (bucket_id = 'message-attachments' and auth.uid() is not null);
 
+drop policy if exists "Authenticated users delete chat media" on storage.objects;
 create policy "Authenticated users delete chat media"
 on storage.objects for delete
 using (bucket_id = 'message-attachments' and auth.uid() is not null);
@@ -1749,6 +1773,7 @@ begin
   end if;
   execute $m0024$
 -- Allow admins to send targeted marketing notifications from the admin dashboard.
+drop policy if exists "Admins can insert marketing notifications" on public.notifications;
 create policy "Admins can insert marketing notifications" on public.notifications
   for insert
   with check (public.is_admin() and type = 'marketing');
@@ -1929,6 +1954,43 @@ begin
   execute $m0028$
 -- Security lockdown: protected profile columns, private phone numbers, RPC-only
 -- order updates, encrypted verification ID numbers and private chat attachments.
+
+-- A database built outside migrations may already have a function with the same
+-- name and arguments but a different return type, which "create or replace"
+-- can't change. Drop such a function first so it can be recreated; one with the
+-- same return type is left alone. Later migrations use this too.
+create schema if not exists private;
+
+create or replace function private.drop_function_if_result_differs(p_name text, p_args text, p_result text)
+returns void
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_function regprocedure;
+begin
+  select p.oid::regprocedure into v_function
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname = p_name
+    and oidvectortypes(p.proargtypes) = p_args
+    and replace(lower(pg_get_function_result(p.oid)), 'public.', '') <> lower(p_result);
+
+  if v_function is not null then
+    execute format('drop function %s', v_function);
+    raise notice 'Replaced % because it returned a different type', v_function;
+  end if;
+end;
+$$;
+
+select private.drop_function_if_result_differs('guard_profile_self_update', '', 'trigger');
+select private.drop_function_if_result_differs('mark_order_fulfilled', 'uuid', 'jsonb');
+select private.drop_function_if_result_differs('record_payment_as_pending', 'uuid', 'jsonb');
+select private.drop_function_if_result_differs('confirm_delivery_and_release_payment', 'uuid', 'jsonb');
+select private.drop_function_if_result_differs('encrypt_verification_id_number', '', 'trigger');
+select private.drop_function_if_result_differs('reveal_verification_id_number', 'uuid', 'text');
+select private.drop_function_if_result_differs('is_conversation_participant', 'text', 'boolean');
 
 -- ---------------------------------------------------------------------------
 -- 1. Profiles: users may only edit their own public-facing fields.
@@ -2374,6 +2436,10 @@ begin
 -- TRUST-TOP-T73XBA6S. Every reference is recorded once, bound to the user and
 -- the thing it pays for, so it cannot be guessed or replayed.
 
+-- Replace same-named functions that return a different type (see 0028).
+select private.drop_function_if_result_differs('new_transaction_reference', 'text, uuid, uuid', 'text');
+select private.drop_function_if_result_differs('issue_order_payment_reference', 'uuid', 'text');
+
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 
@@ -2508,6 +2574,9 @@ begin
 -- Refunds and reversals must point at the payment they undo (TRUST-ORD-..., or a
 -- pre-ledger trustall_... Paystack reference), so every money movement can be
 -- traced back to its original transaction.
+
+-- Replace same-named functions that return a different type (see 0028).
+select private.drop_function_if_result_differs('new_transaction_reference', 'text, uuid, uuid, text', 'text');
 
 alter table public.transaction_references
   add column if not exists original_reference text;
@@ -2740,6 +2809,11 @@ begin
 -- New public profile columns must be granted explicitly in their migration:
 --   grant select (new_column) on public.profiles to anon, authenticated;
 
+-- Replace same-named functions that return a different type (see 0028).
+select private.drop_function_if_result_differs('guard_profile_self_update', '', 'trigger');
+select private.drop_function_if_result_differs('get_my_profile', '', 'SETOF profiles');
+select private.drop_function_if_result_differs('admin_get_profiles', 'uuid[]', 'SETOF profiles');
+
 -- Others only need to know whether a seller can be paid, not the account code.
 alter table public.profiles
   add column if not exists payout_connected boolean
@@ -2838,6 +2912,14 @@ begin
 -- Admin tooling: an audit log of every admin change, atomic verification and
 -- warning actions, listing approval enforced by the database, and user search
 -- and detail lookups for the admin dashboard.
+
+-- Replace same-named functions that return a different type (see 0028).
+select private.drop_function_if_result_differs('log_admin_change', '', 'trigger');
+select private.drop_function_if_result_differs('admin_review_verification', 'uuid, boolean, text', 'jsonb');
+select private.drop_function_if_result_differs('admin_issue_warning', 'uuid', 'jsonb');
+select private.drop_function_if_result_differs('guard_listing_moderation', '', 'trigger');
+select private.drop_function_if_result_differs('admin_search_users', 'text, text, integer, integer', 'TABLE(id uuid, full_name text, business_name text, handle text, email text, is_seller boolean, verified_seller boolean, status text, role text, created_at timestamp with time zone)');
+select private.drop_function_if_result_differs('admin_get_user_details', 'uuid', 'jsonb');
 
 -- ---------------------------------------------------------------------------
 -- 1. Audit log: written by triggers whenever an admin changes a watched table.
@@ -3204,6 +3286,11 @@ begin
   execute $m0035$
 -- Private dispute evidence, and a rate limiter for server functions and RPCs.
 
+-- Replace same-named functions that return a different type (see 0028).
+select private.drop_function_if_result_differs('can_access_dispute', 'text', 'boolean');
+select private.drop_function_if_result_differs('consume_rate_limit', 'text, integer, integer', 'boolean');
+select private.drop_function_if_result_differs('issue_order_payment_reference', 'uuid', 'text');
+
 -- ---------------------------------------------------------------------------
 -- 1. Dispute evidence: private bucket, visible only to the people in the case.
 -- ---------------------------------------------------------------------------
@@ -3370,6 +3457,210 @@ $m0036$;
   raise notice 'Applied %', '0036_offer_and_avatar_policies.sql';
 exception when others then
   raise exception 'Migration % failed: %', '0036_offer_and_avatar_policies.sql', sqlerrm;
+end
+$bundle$;
+
+-- >>> 0037_block_contact_details_in_chat.sql
+do $bundle$
+begin
+  if exists (select 1 from private.applied_migrations where name = '0037_block_contact_details_in_chat.sql') then
+    return;
+  end if;
+  execute $m0037$
+-- Keep deals inside Trustall: chat messages and offers can't carry phone
+-- numbers, emails, links, social handles or bank details, and chat images are
+-- screened on the server before the other person can see them.
+
+-- Replace same-named functions that return a different type (see 0028).
+select private.drop_function_if_result_differs('chat_contact_violation', 'text', 'text');
+select private.drop_function_if_result_differs('block_contact_details', '', 'trigger');
+
+-- ---------------------------------------------------------------------------
+-- 1. Text: refuse contact details in messages and offers.
+-- ---------------------------------------------------------------------------
+-- Returns why the text looks like contact details, or null when it's fine.
+-- Phone and account numbers are 10+ digits, usually written in groups of up to
+-- four ("0803 123 4567", "+234 803…", "0 8 0 3…", "zero eight zero…", "O8O3…").
+-- Short groups joined by spaces, dashes or dots are counted together; a group
+-- of five or more digits, or thousands written with commas ("1,500,000"), is
+-- read as an amount, so prices and price ranges aren't blocked.
+create or replace function public.chat_contact_violation(p_text text)
+returns text
+language plpgsql
+immutable
+set search_path = public
+as $$
+declare
+  v text := lower(coalesce(p_text, ''));
+  v_words text[] := array['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  v_token text;
+  v_run integer := 0;
+  v_can_join boolean := false;
+begin
+  if v = '' then
+    return null;
+  end if;
+
+  -- Emails, including "name at gmail dot com" and bare provider names.
+  if v ~ '[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+'
+     or v ~ '[a-z0-9._%+-]+\s*(\(at\)|\[at\]|\sat\s)\s*[a-z0-9-]+\s*(\.|\(dot\)|\[dot\]|\sdot\s)\s*[a-z]{2,}'
+     or v ~ '\m(gmail|yahoo|ymail|hotmail|outlook|icloud|protonmail)\M' then
+    return 'email';
+  end if;
+
+  -- Links and off-platform contact apps. Links to trustall.online are fine.
+  if v ~ '(https?://|www\.)(?!(www\.)?trustall\.online)'
+     or v ~ '\m(wa\.me|t\.me|fb\.me|m\.me|bit\.ly|linktr\.ee)\M'
+     or v ~ '\m[a-z0-9-]+\.(com|net|org|ng|io|me|shop|store|link)\M'
+     or v ~ '\m(whatsapp|whatsap|watsapp|watsap|wassap|wasap|telegram|instagram|insta|facebook|tiktok|snapchat|twitter)\M'
+     or v ~ '(^|[^a-z0-9_.])@[a-z0-9_.]{3,}' then
+    return 'external_contact';
+  end if;
+
+  -- Bank details by name.
+  if v ~ '\m(acct|acc no|account (no|num|number|name|details)|bvn|nuban|sort code|routing number)\M'
+     or v ~ '(^|[^a-z])a/c([^a-z]|$)' then
+    return 'bank_details';
+  end if;
+
+  -- Phone and account numbers. Undo disguises first: spelled-out digits, the
+  -- letter o next to a digit, and thousands commas (so "1,500,000" is one group).
+  for i in 1 .. array_length(v_words, 1) loop
+    v := regexp_replace(v, '\m' || v_words[i] || '\M', (i - 1)::text, 'g');
+  end loop;
+  v := regexp_replace(v, '(?<=\d)o|o(?=\d)', '0', 'g');
+  v := regexp_replace(v, '(?<=\d)o|o(?=\d)', '0', 'g');
+  v := regexp_replace(v, '(\d),(?=\d{3}(\D|$))', '\1', 'g');
+
+  for v_token in select (regexp_matches(v, '\d+|\D+', 'g'))[1] loop
+    if v_token ~ '^\d+$' then
+      if length(v_token) >= 10 then
+        return 'phone_or_account_number';
+      elsif length(v_token) <= 4 then
+        v_run := case when v_can_join then v_run else 0 end + length(v_token);
+        if v_run >= 10 then
+          return 'phone_or_account_number';
+        end if;
+        v_can_join := true;
+      else
+        v_run := 0;
+        v_can_join := false;
+      end if;
+    else
+      -- Short separators (spaces, dashes, dots, brackets, a leading +) keep a
+      -- number going; words or anything longer end it.
+      if not (v_can_join and v_token ~ '^[[:space:].\-_()/\\+*|:#~]{1,3}$') then
+        v_run := 0;
+        v_can_join := false;
+      end if;
+    end if;
+  end loop;
+
+  return null;
+end;
+$$;
+
+-- Applied to text written by signed-in people (including through RPCs such as
+-- edit_message). System writes with no signed-in user are not checked.
+create or replace function public.block_contact_details()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_column text;
+  v_reason text;
+begin
+  if auth.uid() is null then
+    return new;
+  end if;
+
+  foreach v_column in array tg_argv loop
+    v_reason := public.chat_contact_violation(to_jsonb(new) ->> v_column);
+    if v_reason is not null then
+      raise exception 'For your safety, phone numbers, emails, links and bank details can''t be shared in chat. Keep payments and contact inside Trustall.'
+        using errcode = 'TC001', detail = v_reason;
+    end if;
+  end loop;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_block_contact_details on public.messages;
+create trigger trg_block_contact_details
+  before insert or update of body on public.messages
+  for each row execute function public.block_contact_details('body');
+
+drop trigger if exists trg_block_contact_details on public.offers;
+create trigger trg_block_contact_details
+  before insert or update of item_title, item_description on public.offers
+  for each row execute function public.block_contact_details('item_title', 'item_description');
+
+-- ---------------------------------------------------------------------------
+-- 2. Images: uploads wait in a holding folder only the sender can see.
+-- ---------------------------------------------------------------------------
+-- Uploads go to <conversation_id>/pending/<sender_id>/<file>. The
+-- screen-chat-image server function checks each one and moves clean files to
+-- <conversation_id>/<file>, where both people in the conversation can see them.
+drop policy if exists "Participants read chat media" on storage.objects;
+drop policy if exists "Participants upload chat media" on storage.objects;
+drop policy if exists "Participants update chat media" on storage.objects;
+drop policy if exists "Participants delete chat media" on storage.objects;
+
+create policy "Participants read chat media" on storage.objects
+  for select using (
+    bucket_id = 'message-attachments'
+    and (
+      public.is_admin()
+      or (
+        public.is_conversation_participant((storage.foldername(name))[1])
+        and ((storage.foldername(name))[2] is distinct from 'pending' or (storage.foldername(name))[3] = auth.uid()::text)
+      )
+    )
+  );
+
+create policy "Participants upload chat media" on storage.objects
+  for insert with check (
+    bucket_id = 'message-attachments'
+    and public.is_conversation_participant((storage.foldername(name))[1])
+    and (storage.foldername(name))[2] = 'pending'
+    and (storage.foldername(name))[3] = auth.uid()::text
+  );
+
+create policy "Participants update chat media" on storage.objects
+  for update using (
+    bucket_id = 'message-attachments'
+    and public.is_conversation_participant((storage.foldername(name))[1])
+    and (storage.foldername(name))[2] = 'pending'
+    and (storage.foldername(name))[3] = auth.uid()::text
+  ) with check (
+    bucket_id = 'message-attachments'
+    and public.is_conversation_participant((storage.foldername(name))[1])
+    and (storage.foldername(name))[2] = 'pending'
+    and (storage.foldername(name))[3] = auth.uid()::text
+  );
+
+create policy "Participants delete chat media" on storage.objects
+  for delete using (
+    bucket_id = 'message-attachments'
+    and (
+      public.is_admin()
+      or (
+        public.is_conversation_participant((storage.foldername(name))[1])
+        and ((storage.foldername(name))[2] is distinct from 'pending' or (storage.foldername(name))[3] = auth.uid()::text)
+      )
+    )
+  );
+
+-- Attachment records are written only by screen-chat-image, so a browser can't
+-- attach an unscreened file.
+drop policy if exists "Participants insert message attachments" on public.message_attachments;
+$m0037$;
+  insert into private.applied_migrations (name) values ('0037_block_contact_details_in_chat.sql');
+  raise notice 'Applied %', '0037_block_contact_details_in_chat.sql';
+exception when others then
+  raise exception 'Migration % failed: %', '0037_block_contact_details_in_chat.sql', sqlerrm;
 end
 $bundle$;
 
